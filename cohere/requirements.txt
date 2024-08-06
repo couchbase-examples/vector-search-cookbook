@@ -1,0 +1,6 @@
+cohere
+couchbase
+langchain_couchbase
+datasets
+numpy
+python-dotenv
