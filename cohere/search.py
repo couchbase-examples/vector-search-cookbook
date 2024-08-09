@@ -104,7 +104,6 @@ def create_embeddings(api_key):
         embeddings = CohereEmbeddings(
             cohere_api_key=api_key, 
             model="embed-english-v3.0",
-            # client_name="langchain-couchbase-rag"
         )
         logging.info("Successfully created CohereEmbeddings")
         return embeddings
