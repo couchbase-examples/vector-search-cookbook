@@ -1,6 +1,9 @@
 import os
 import warnings
+import time
+import logging
 from datetime import timedelta
+from uuid import uuid4
 
 import numpy as np
 from couchbase.auth import PasswordAuthenticator
@@ -16,12 +19,18 @@ from langchain_core.prompts import ChatPromptTemplate
 from langchain_core.runnables import RunnablePassthrough
 from langchain_couchbase.cache import CouchbaseCache
 from langchain_couchbase.vectorstores import CouchbaseVectorStore
-from langchain_openai import ChatOpenAI, OpenAIEmbeddings
+from langchain_openai import ChatOpenAI
+from langchain_cohere import CohereEmbeddings
 
-import cohere
+# Set up logging
+logging.basicConfig(level=logging.INFO, format='%(asctime)s - %(levelname)s - %(message)s')
 
 # Load environment variables from .env file
 load_dotenv()
+
+SCOPE_NAME = "shared"
+COLLECTION_NAME = "docs"
+CACHE_COLLECTION = "cache"
 
 def get_env_variable(var_name, default_value=None):
     value = os.getenv(var_name)
@@ -34,167 +43,170 @@ def get_env_variable(var_name, default_value=None):
     return value
 
 def connect_to_couchbase(connection_string, db_username, db_password):
-    """Connect to Couchbase"""
-    auth = PasswordAuthenticator(db_username, db_password)
-    options = ClusterOptions(auth)
-    cluster = Cluster(connection_string, options)
-    cluster.wait_until_ready(timedelta(seconds=5))
-    return cluster
+    try:
+        auth = PasswordAuthenticator(db_username, db_password)
+        options = ClusterOptions(auth)
+        cluster = Cluster(connection_string, options)
+        cluster.wait_until_ready(timedelta(seconds=5))
+        logging.info("Successfully connected to Couchbase")
+        return cluster
+    except Exception as e:
+        raise ConnectionError(f"Failed to connect to Couchbase: {str(e)}")
 
 def get_vector_store(cluster, db_bucket, db_scope, db_collection, embedding, index_name):
-    """Return the Couchbase vector store"""
-    vector_store = CouchbaseVectorStore(
-        cluster=cluster,
-        bucket_name=db_bucket,
-        scope_name=db_scope,
-        collection_name=db_collection,
-        embedding=embedding,
-        index_name=index_name,
-    )
-    return vector_store
+    try:
+        vector_store = CouchbaseVectorStore(
+            cluster=cluster,
+            bucket_name=db_bucket,
+            scope_name=db_scope,
+            collection_name=db_collection,
+            embedding=embedding,
+            index_name=index_name,
+        )
+        logging.info("Successfully created vector store")
+        return vector_store
+    except Exception as e:
+        raise ValueError(f"Failed to create vector store: {str(e)}")
 
 def get_cache(cluster, db_bucket, db_scope, cache_collection):
-    """Return the Couchbase cache"""
-    cache = CouchbaseCache(
-        cluster=cluster,
-        bucket_name=db_bucket,
-        scope_name=db_scope,
-        collection_name=cache_collection,
-    )
-    return cache
-
-def save_to_vector_store(vector_store, texts, embeddings):
-    """Store the documents in the vector store"""
-    documents = [
-        Document(page_content=text, metadata={'embedding': embed})
-        for embed, text in zip(embeddings, texts)
-    ]
-    vector_store.add_documents(documents)
-    print(f"Stored {len(documents)} documents in Couchbase")
-
-def semantic_search(vector_store, query, co, top_k=10):
-    """Perform semantic search"""
     try:
-        query_embed = co.embed(texts=[query], model='small', truncate='LEFT').embeddings[0]
+        cache = CouchbaseCache(
+            cluster=cluster,
+            bucket_name=db_bucket,
+            scope_name=db_scope,
+            collection_name=cache_collection,
+        )
+        logging.info("Successfully created cache")
+        return cache
     except Exception as e:
-        print(f"Error creating query embedding: {e}")
-        return []
+        raise ValueError(f"Failed to create cache: {str(e)}")
 
+def load_trec_dataset(split='train[:1000]'):
     try:
-        search_results = vector_store.similarity_search_by_vector(embedding=query_embed, k=top_k)
+        dataset = load_dataset('trec', split=split)
+        logging.info(f"Successfully loaded TREC dataset with {len(dataset)} samples")
+        return dataset
+    except Exception as e:
+        raise ValueError(f"Error loading TREC dataset: {str(e)}")
+    
+def save_to_vector_store(vector_store, texts):
+    try:
+        documents = [Document(page_content=text) for text in texts]
+        uuids = [str(uuid4()) for _ in range(len(documents))]
+        vector_store.add_documents(documents=documents, ids=uuids)
+        logging.info(f"Stored {len(documents)} documents in Couchbase")
+    except Exception as e:
+        raise RuntimeError(f"Failed to save documents to vector store: {str(e)}")
 
-        results = [{'id': doc.metadata['id'], 'text': doc.page_content, 'distance': score} 
+def create_embeddings(api_key):
+    try:
+        
+        embeddings = CohereEmbeddings(
+            cohere_api_key=api_key, 
+            model="embed-english-v3.0",
+            # client_name="langchain-couchbase-rag"
+        )
+        logging.info("Successfully created CohereEmbeddings")
+        return embeddings
+    except Exception as e:
+        raise ValueError(f"Error creating CohereEmbeddings: {str(e)}")
+
+    
+def semantic_search(vector_store, query, top_k=10):
+    try:
+        start_time = time.time()
+        search_results = vector_store.similarity_search_with_score(query, k=top_k)
+        results = [{'id': doc.metadata.get('id', 'N/A'), 'text': doc.page_content, 'distance': score} 
                    for doc, score in search_results]
-        return results
+        elapsed_time = time.time() - start_time
+        logging.info(f"Semantic search completed in {elapsed_time:.2f} seconds")
+        return results, elapsed_time
     except CouchbaseException as e:
-        print(f"Error performing semantic search: {e}")
-        return []
+        raise RuntimeError(f"Error performing semantic search: {str(e)}")
 
+def create_rag_chain(vector_store, llm):
+    template = """You are a helpful bot. If you cannot answer based on the context provided, respond with a generic answer. Answer the question as truthfully as possible using the context below:
+    {context}
 
+    Question: {question}"""
+    prompt = ChatPromptTemplate.from_template(template)
+    chain = (
+        {"context": vector_store.as_retriever(), "question": RunnablePassthrough()}
+        | prompt
+        | llm
+        | StrOutputParser()
+    )
+    logging.info("Successfully created RAG chain")
+    return chain
+
+def create_pure_llm_chain(llm):
+    template = """You are a helpful bot. Answer the question as truthfully as possible.
+
+    Question: {question}"""
+    prompt = ChatPromptTemplate.from_template(template)
+    chain = (
+        {"question": RunnablePassthrough()}
+        | prompt
+        | llm
+        | StrOutputParser()
+    )
+    logging.info("Successfully created pure LLM chain")
+    return chain
 
 def main():
-    # Get environment variables or use default values
-    COHERE_API_KEY = get_env_variable('COHERE_API_KEY')  # No default for COHERE_API_KEY, must be provided
-    OPENAI_API_KEY = get_env_variable("OPENAI_API_KEY")
-    CB_USERNAME = get_env_variable('CB_USERNAME', 'default-username')
-    CB_PASSWORD = get_env_variable('CB_PASSWORD', 'default-password')
-    CB_BUCKET_NAME = get_env_variable('CB_BUCKET_NAME', 'default-bucket-name')
-    CB_HOST = get_env_variable('CB_HOST', 'couchbase://localhost')
-    INDEX_NAME = get_env_variable('INDEX_NAME', 'default-index-name')
-    CACHE_COLLECTION = get_env_variable('CACHE_COLLECTION', 'default-cache-collection')
-
-    # Initialize Cohere client
     try:
-        co = cohere.Client(COHERE_API_KEY)
-    except Exception as e:
-        print(f"Error initializing Cohere client: {e}")
-        return
+        # Get environment variables
+        COHERE_API_KEY = get_env_variable('COHERE_API_KEY')
+        OPENAI_API_KEY = get_env_variable("OPENAI_API_KEY")
+        CB_USERNAME = get_env_variable('CB_USERNAME', 'Administrator')
+        CB_PASSWORD = get_env_variable('CB_PASSWORD', 'password')
+        CB_BUCKET_NAME = get_env_variable('CB_BUCKET_NAME', 'travel-sample')
+        CB_HOST = get_env_variable('CB_HOST', 'couchbase://localhost')
+        INDEX_NAME = get_env_variable('INDEX_NAME', 'vector_search')
 
-    # Load the TREC dataset
-    try:
-        trec = load_dataset('trec', split='train[:1000]')
-    except Exception as e:
-        print(f"Error loading TREC dataset: {e}")
-        return
+        # Load dataset and create embeddings
+        trec = load_trec_dataset()
+        embeddings = create_embeddings(COHERE_API_KEY)
 
-    # Create embeddings
-    try:
-        embeds = co.embed(texts=trec['text'], model='small', truncate='LEFT').embeddings
-        print(f"Embedding shape: {np.array(embeds).shape}")
-    except Exception as e:
-        print(f"Error creating embeddings: {e}")
-        return
-
-    try:
-        # Connect to Couchbase
+        # Setup Couchbase and vector store
         cluster = connect_to_couchbase(CB_HOST, CB_USERNAME, CB_PASSWORD)
-        bucket = cluster.bucket(CB_BUCKET_NAME)
-        scope = bucket.scope("shared")
+        vector_store = get_vector_store(cluster, CB_BUCKET_NAME, SCOPE_NAME, COLLECTION_NAME, embeddings, INDEX_NAME)
+        save_to_vector_store(vector_store, trec['text'])
 
-        # Use OpenAIEmbeddings as a fallback for compatibility
-        embeddings = OpenAIEmbeddings()
-
-        # Initialize CouchbaseVectorStore
-        vector_store = get_vector_store(cluster, CB_BUCKET_NAME, "shared", "docs", embeddings, INDEX_NAME)
-
-        # Store embeddings and metadata in Couchbase
-        save_to_vector_store(vector_store, trec['text'], embeds)
-
-        # Set the LLM cache
-        cache = get_cache(cluster, CB_BUCKET_NAME, "shared", CACHE_COLLECTION)
+        # Setup cache
+        cache = get_cache(cluster, CB_BUCKET_NAME, SCOPE_NAME, CACHE_COLLECTION)
         set_llm_cache(cache)
 
-        # Build the prompt for the RAG
-        template = """You are a helpful bot. If you cannot answer based on the context provided, respond with a generic answer. Answer the question as truthfully as possible using the context below:
-        {context}
+        # Create LLMs and chains
+        llm = ChatOpenAI(temperature=0, model="gpt-4o-2024-08-06", streaming=True)
+        rag_chain = create_rag_chain(vector_store, llm)
+        pure_llm_chain = create_pure_llm_chain(llm)
 
-        Question: {question}"""
-
-        prompt = ChatPromptTemplate.from_template(template)
-
-        # Use OpenAI GPT-4 as the LLM for the RAG
-        llm = ChatOpenAI(temperature=0, model="gpt-4-1106-preview", streaming=True)
-
-        # RAG chain
-        chain = (
-            {"context": vector_store.as_retriever(), "question": RunnablePassthrough()}
-            | prompt
-            | llm
-            | StrOutputParser()
-        )
-
-        # Pure OpenAI output without RAG
-        template_without_rag = """You are a helpful bot. Answer the question as truthfully as possible.
-
-        Question: {question}"""
-
-        prompt_without_rag = ChatPromptTemplate.from_template(template_without_rag)
-        llm_without_rag = ChatOpenAI(model="gpt-4-1106-preview", streaming=True)
-
-        chain_without_rag = (
-            {"question": RunnablePassthrough()}
-            | prompt_without_rag
-            | llm_without_rag
-            | StrOutputParser()
-        )
-
-        # Sample query for testing
+        # Sample query and search
         query = "What caused the 1929 Great Depression?"
-        results = semantic_search(vector_store, query, co)
 
+        # Get responses
+        start_time = time.time()
+        rag_response = rag_chain.invoke(query)
+        rag_elapsed_time = time.time() - start_time
+        logging.info(f"RAG response generated in {rag_elapsed_time:.2f} seconds")
+
+        start_time = time.time()
+        pure_llm_response = pure_llm_chain.invoke(query)
+        pure_llm_elapsed_time = time.time() - start_time
+        logging.info(f"Pure LLM response generated in {pure_llm_elapsed_time:.2f} seconds")
+
+        print(f"RAG Response: {rag_response}")
+        print(f"Pure LLM Response: {pure_llm_response}")
+
+        # Perform semantic search
+        results, search_elapsed_time = semantic_search(vector_store, query)
+        print(f"\nSemantic Search Results (completed in {search_elapsed_time:.2f} seconds):")
         for result in results:
             print(f"Distance: {result['distance']:.4f}, Text: {result['text']}")
 
-        # Get the response from the RAG
-        rag_response = chain.invoke(query)
-        print(f"RAG Response: {rag_response}")
-
-        # Get the response from the pure LLM
-        pure_llm_response = chain_without_rag.invoke(query)
-        print(f"Pure LLM Response: {pure_llm_response}")
-
     except Exception as e:
-        print(f"Error: {e}")
+        logging.error(f"An error occurred: {str(e)}")
 
 if __name__ == "__main__":
     main()
