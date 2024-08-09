@@ -100,7 +100,9 @@ def save_to_vector_store(vector_store, texts):
 
 def create_embeddings(api_key):
     try:
-        embeddings = JinaEmbeddings(jina_auth_token=api_key, model_name="jina-embeddings-v2-base-en")
+        embeddings = JinaEmbeddings(
+            jina_api_key=api_key, model_name="jina-embeddings-v2-base-en"
+        )
         logging.info("Successfully created JinaEmbeddings")
         return embeddings
     except Exception as e:
