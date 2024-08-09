@@ -1,6 +1,8 @@
-cohere
-couchbase
-langchain_couchbase
-datasets
 numpy
+couchbase
+datasets
 python-dotenv
+langchain-core
+langchain-couchbase
+langchain-openai
+langchain-cohere
