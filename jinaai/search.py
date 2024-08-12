@@ -1,10 +1,9 @@
-import os
-import warnings
-import time
 import logging
+import os
+import time
+import warnings
 from datetime import timedelta
 from uuid import uuid4
-from tqdm import tqdm
 
 import numpy as np
 from couchbase.auth import PasswordAuthenticator
@@ -13,6 +12,7 @@ from couchbase.exceptions import CouchbaseException
 from couchbase.options import ClusterOptions
 from datasets import load_dataset
 from dotenv import load_dotenv
+from langchain_community.embeddings import JinaEmbeddings
 from langchain_core.documents import Document
 from langchain_core.globals import set_llm_cache
 from langchain_core.output_parsers import StrOutputParser
@@ -21,17 +21,13 @@ from langchain_core.runnables import RunnablePassthrough
 from langchain_couchbase.cache import CouchbaseCache
 from langchain_couchbase.vectorstores import CouchbaseVectorStore
 from langchain_openai import ChatOpenAI
-from langchain_community.embeddings import JinaEmbeddings
+from tqdm import tqdm
 
 # Set up logging
 logging.basicConfig(level=logging.INFO, format='%(asctime)s - %(levelname)s - %(message)s')
 
 # Load environment variables from .env file
 load_dotenv()
-
-SCOPE_NAME = "shared"
-COLLECTION_NAME = "docs"
-CACHE_COLLECTION = "cache"
 
 def get_env_variable(var_name, default_value=None):
     value = os.getenv(var_name)
@@ -170,7 +166,11 @@ def main():
         CB_PASSWORD = get_env_variable('CB_PASSWORD', 'password')
         CB_BUCKET_NAME = get_env_variable('CB_BUCKET_NAME', 'travel-sample')
         CB_HOST = get_env_variable('CB_HOST', 'couchbase://localhost')
-        INDEX_NAME = get_env_variable('INDEX_NAME', 'vector_search')
+        INDEX_NAME = get_env_variable('INDEX_NAME', 'vector_search_jina')
+        
+        SCOPE_NAME = get_env_variable('SCOPE_NAME', 'shared')
+        COLLECTION_NAME = get_env_variable('COLLECTION_NAME', 'jina')
+        CACHE_COLLECTION = get_env_variable('CACHE_COLLECTION', 'cache')
 
         # Load dataset and create embeddings
         trec = load_trec_dataset()
