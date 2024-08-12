@@ -1,92 +1,116 @@
 # Semantic Search with Couchbase Vector Store and LLM Integration
 
-This repository contains a Python script that demonstrates the integration of a semantic search system using Couchbase's vector store capabilities, Cohere's embedding model, and a Retrieval-Augmented Generation (RAG) pipeline with OpenAI's GPT-4.
+This repository demonstrates a robust semantic search system using Couchbase's vector store capabilities, multiple embedding models (Cohere, Voyage, and Jina), and a Retrieval-Augmented Generation (RAG) pipeline with OpenAI's GPT-4.
+
+## Features
+
+- Support for multiple embedding models: Cohere, Voyage, and Jina
+- Flexible Couchbase index structure for multi-model vector search
+- Retrieval-Augmented Generation (RAG) with OpenAI's GPT-4
+- Efficient semantic search across different embedding types
+- Easy switching between embedding models
 
 ## Prerequisites
-
-Before running the script, ensure that you have the following installed:
 
 - Python 3.8+
 - Couchbase Server
 - Required Python packages (listed in `requirements.txt`)
-- A `.env` file containing necessary environment variables
+- API keys for Cohere, Voyage, Jina, and OpenAI
 
 ## Environment Variables
 
-The script uses several environment variables, which should be defined in a `.env` file in the root directory. Below are the required variables:
+Create a `.env` file in the root directory with the following variables:
 
 ```plaintext
 COHERE_API_KEY=your-cohere-api-key
+VOYAGE_API_KEY=your-voyage-api-key
+JINA_API_KEY=your-jina-api-key
 OPENAI_API_KEY=your-openai-api-key
 CB_USERNAME=your-couchbase-username
 CB_PASSWORD=your-couchbase-password
 CB_BUCKET_NAME=your-couchbase-bucket-name
 CB_HOST=your-couchbase-host
-INDEX_NAME=your-index-name
-CACHE_COLLECTION=your-cache-collection-name
+INDEX_NAME=vector_search_xyz
+CACHE_COLLECTION=cache
 ```
 
 ## Setup
 
 1. Clone the repository:
-
    ```bash
-   git clone https://github.com/your-username/your-repo.git
-   cd your-repo
+   git clone https://github.com/your-username/vector-search-cookbook.git
+   cd vector-search-cookbook
    ```
 
-2. Install the required packages:
-
+2. Install dependencies:
    ```bash
    pip install -r requirements.txt
    ```
 
-3. Create a `.env` file in the root directory with the necessary environment variables.
+3. Set up the Couchbase index:
+   - Use the provided `vector_search_xyz` index definition to create a new index in your Couchbase cluster.
+   - The index supports separate properties for each embedding model: `shared.cohere`, `shared.voyage`, and `shared.jina`.
 
 4. Run the script:
-
    ```bash
-   python main.py
+   python3 search.py
    ```
 
 ## Components
 
-### 1. Cohere Embeddings
+### 1. Multi-Model Embeddings
+The system supports embeddings from Cohere, Voyage, and Jina. You can easily switch between these models in the code.
 
-The script uses Cohere's small model to generate embeddings for the documents loaded from the TREC dataset. These embeddings are then stored in Couchbase's vector store for efficient similarity search.
-
-### 2. Couchbase Integration
-
-Couchbase is used to store document embeddings and their metadata, allowing for fast retrieval during the semantic search. The script demonstrates connecting to Couchbase, storing embeddings, and retrieving similar documents based on a query.
+### 2. Couchbase Vector Store
+Couchbase is used to store document embeddings and metadata. The index structure allows for efficient retrieval across different embedding types.
 
 ### 3. Retrieval-Augmented Generation (RAG)
-
-The RAG pipeline integrates OpenAI's GPT-4 model to generate answers based on retrieved documents. This allows the system to provide more contextually relevant answers.
+The RAG pipeline integrates OpenAI's GPT-4 to generate contextually relevant answers based on retrieved documents.
 
 ### 4. Semantic Search
+The semantic search function performs similarity searches using the appropriate embedding type and retrieves the top-k most similar documents.
 
-A semantic search function is provided, which performs a similarity search using the vector store. The top-k most similar documents are retrieved and used for generating responses.
+### 5. Model Switching
+A function is provided to switch between embedding models, allowing for easy comparison and flexibility in your search pipeline.
 
-### 5. Error Handling
+## Usage
 
-The script includes basic error handling for connectivity issues, missing environment variables, and embedding generation failures.
+The main script demonstrates:
+1. Loading a dataset
+2. Generating embeddings using the selected model
+3. Storing documents and embeddings in Couchbase
+4. Performing semantic search
+5. Generating responses using the RAG pipeline
+
+You can modify the `current_model` variable in the main function to switch between 'cohere', 'voyage', and 'jina' embedding models.
+
+## Couchbase Index Structure
+
+The Couchbase index is structured to support multiple embedding types:
+
+```json
+{
+  "types": {
+    "shared.cohere": { ... },
+    "shared.voyage": { ... },
+    "shared.jina": { ... }
+  }
+}
+```
+
+Each type has its own `embedding` field with the appropriate dimensions for the respective model.
 
 ## Future Work
 
-This script serves as a foundation for integrating other embedding models and vector stores. Planned expansions include:
+- Implement a user interface for easy model switching and query input
+- Add support for more embedding models
+- Optimize RAG pipeline for better response generation
+- Implement advanced query preprocessing and result post-processing
 
-- **Voyage Integration:** Extend the script to support embedding generation and retrieval using the Voyage model.
-- **Additional Models:** Integrate other models for generating embeddings and performing semantic search.
-- **Advanced Query Handling:** Implement more sophisticated query parsing and handling strategies.
+## Contributing
 
-## Contribution
-
-Contributions are welcome! If you have ideas for improvements or new features, please open an issue or submit a pull request.
+Contributions are welcome! Please feel free to submit a Pull Request.
 
 ## License
 
 This project is licensed under the MIT License. See the [LICENSE](LICENSE) file for details.
-
----
-
-This template covers the core functionality of the current task and leaves room for future enhancements and integrations. Feel free to adjust the sections as you see fit!
