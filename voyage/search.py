@@ -1,10 +1,9 @@
-import os
-import warnings
-import time
 import logging
+import os
+import time
+import warnings
 from datetime import timedelta
 from uuid import uuid4
-from tqdm import tqdm
 
 import numpy as np
 from couchbase.auth import PasswordAuthenticator
@@ -22,16 +21,13 @@ from langchain_couchbase.cache import CouchbaseCache
 from langchain_couchbase.vectorstores import CouchbaseVectorStore
 from langchain_openai import ChatOpenAI, OpenAIEmbeddings
 from langchain_voyageai import VoyageAIEmbeddings
+from tqdm import tqdm
 
 # Set up logging
 logging.basicConfig(level=logging.INFO, format='%(asctime)s - %(levelname)s - %(message)s')
 
 # Load environment variables from .env file
 load_dotenv()
-
-SCOPE_NAME = "shared"
-COLLECTION_NAME = "docs"
-CACHE_COLLECTION = "cache"
 
 def get_env_variable(var_name, default_value=None):
     value = os.getenv(var_name)
@@ -169,7 +165,11 @@ def main():
         CB_PASSWORD = get_env_variable('CB_PASSWORD', 'password')
         CB_BUCKET_NAME = get_env_variable('CB_BUCKET_NAME', 'travel-sample')
         CB_HOST = get_env_variable('CB_HOST', 'couchbase://localhost')
-        INDEX_NAME = get_env_variable('INDEX_NAME', 'vector_search')
+        INDEX_NAME = get_env_variable('INDEX_NAME', 'vector_search_voyage')
+        
+        SCOPE_NAME = get_env_variable('SCOPE_NAME', 'shared')
+        COLLECTION_NAME = get_env_variable('COLLECTION_NAME', 'voyage')
+        CACHE_COLLECTION = get_env_variable('CACHE_COLLECTION', 'cache')
 
         # Load dataset and create embeddings
         trec = load_trec_dataset()
