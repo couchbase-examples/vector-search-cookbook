@@ -4,6 +4,7 @@ import time
 import logging
 from datetime import timedelta
 from uuid import uuid4
+from tqdm import tqdm
 
 import numpy as np
 from couchbase.auth import PasswordAuthenticator
@@ -81,7 +82,7 @@ def get_cache(cluster, db_bucket, db_scope, cache_collection):
     except Exception as e:
         raise ValueError(f"Failed to create cache: {str(e)}")
 
-def load_trec_dataset(split='train[:1000]'):
+def load_trec_dataset(split='train[:2000]'):
     try:
         dataset = load_dataset('trec', split=split)
         logging.info(f"Successfully loaded TREC dataset with {len(dataset)} samples")
@@ -95,6 +96,17 @@ def save_to_vector_store(vector_store, texts):
         uuids = [str(uuid4()) for _ in range(len(documents))]
         vector_store.add_documents(documents=documents, ids=uuids)
         logging.info(f"Stored {len(documents)} documents in Couchbase")
+    except Exception as e:
+        raise RuntimeError(f"Failed to save documents to vector store: {str(e)}")
+    
+def save_to_vector_store_in_batches(vector_store, texts, batch_size=50):
+    try:
+        num_batches = (len(texts) + batch_size - 1) // batch_size  # Calculate total number of batches
+        for i in tqdm(range(0, len(texts), batch_size), total=num_batches, desc="Processing Batches"):
+            batch = texts[i:i + batch_size]
+            documents = [Document(page_content=text) for text in batch]
+            uuids = [str(uuid4()) for _ in range(len(documents))]
+            vector_store.add_documents(documents=documents, ids=uuids)
     except Exception as e:
         raise RuntimeError(f"Failed to save documents to vector store: {str(e)}")
 
@@ -166,7 +178,13 @@ def main():
         # Setup Couchbase and vector store
         cluster = connect_to_couchbase(CB_HOST, CB_USERNAME, CB_PASSWORD)
         vector_store = get_vector_store(cluster, CB_BUCKET_NAME, SCOPE_NAME, COLLECTION_NAME, embeddings, INDEX_NAME)
-        save_to_vector_store(vector_store, trec['text'])
+
+        # Save data to vector store in one go
+        # save_to_vector_store(vector_store, trec['text'])
+        
+        # Save data to vector store in batches
+        save_to_vector_store_in_batches(vector_store, trec['text'], batch_size=50)
+
 
         # Setup cache
         cache = get_cache(cluster, CB_BUCKET_NAME, SCOPE_NAME, CACHE_COLLECTION)
