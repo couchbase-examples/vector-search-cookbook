@@ -1,0 +1,11 @@
+numpy
+couchbase
+datasets
+langchain-core
+langchain-couchbase
+langchain-openai
+langchain-community
+tqdm
+dotenv
+
+
