@@ -162,10 +162,10 @@ def main():
         # Get environment variables
         JINA_API_KEY = get_env_variable('JINA_API_KEY')
         OPENAI_API_KEY = get_env_variable("OPENAI_API_KEY")
+        CB_HOST = get_env_variable('CB_HOST', 'couchbase://localhost')
         CB_USERNAME = get_env_variable('CB_USERNAME', 'Administrator')
         CB_PASSWORD = get_env_variable('CB_PASSWORD', 'password')
-        CB_BUCKET_NAME = get_env_variable('CB_BUCKET_NAME', 'travel-sample')
-        CB_HOST = get_env_variable('CB_HOST', 'couchbase://localhost')
+        CB_BUCKET_NAME = get_env_variable('CB_BUCKET_NAME', 'vector-search-testing')
         INDEX_NAME = get_env_variable('INDEX_NAME', 'vector_search_jina')
         
         SCOPE_NAME = get_env_variable('SCOPE_NAME', 'shared')
