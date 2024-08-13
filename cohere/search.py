@@ -1,3 +1,4 @@
+import json
 import logging
 import os
 import time
@@ -8,7 +9,9 @@ from uuid import uuid4
 import numpy as np
 from couchbase.auth import PasswordAuthenticator
 from couchbase.cluster import Cluster
-from couchbase.exceptions import CouchbaseException
+from couchbase.exceptions import (CouchbaseException,
+                                  QueryIndexAlreadyExistsException)
+from couchbase.management.search import SearchIndex
 from couchbase.options import ClusterOptions
 from datasets import load_dataset
 from dotenv import load_dotenv
@@ -49,6 +52,48 @@ def connect_to_couchbase(connection_string, db_username, db_password):
     except Exception as e:
         raise ConnectionError(f"Failed to connect to Couchbase: {str(e)}")
 
+def load_index_definition(file_path):
+    try:
+        with open(file_path, 'r') as file:
+            index_definition = json.load(file)
+        return index_definition
+    except Exception as e:
+        raise ValueError(f"Error loading index definition from {file_path}: {str(e)}")
+    
+def create_or_update_search_index(cluster, bucket_name, scope_name, index_definition):
+    try:
+        scope_index_manager = cluster.bucket(bucket_name).scope(scope_name).search_indexes()
+        
+        # Check if index already exists
+        existing_indexes = scope_index_manager.get_all_indexes()
+        index_name = index_definition["name"]
+        
+        if index_name in [index.name for index in existing_indexes]:
+            logging.info(f"Index '{index_name}' already exists. Updating...")
+        else:
+            logging.info(f"Creating new index '{index_name}'...")
+        
+        # Create SearchIndex object
+        search_index = SearchIndex(
+            name=index_definition["name"],
+            source_type=index_definition.get("sourceType", "couchbase"),
+            idx_type=index_definition["type"],
+            source_name=index_definition["sourceName"],
+            params=index_definition["params"],
+            source_params=index_definition.get("sourceParams", {}),
+            plan_params=index_definition.get("planParams", {})
+        )
+        
+        # Upsert the index (create if not exists, update if exists)
+        scope_index_manager.upsert_index(search_index)
+        logging.info(f"Index '{index_name}' successfully created/updated.")
+    
+    # QueryIndexAlreadyExistsException
+    except QueryIndexAlreadyExistsException:
+        logging.info(f"Index '{index_name}' already exists. Skipping creation/update.")
+    except Exception as e:
+        raise RuntimeError(f"Error creating/updating search index: {str(e)}")
+    
 def get_vector_store(cluster, db_bucket, db_scope, db_collection, embedding, index_name):
     try:
         vector_store = CouchbaseVectorStore(
@@ -161,12 +206,18 @@ def main():
         COLLECTION_NAME = get_env_variable('COLLECTION_NAME', 'cohere')
         CACHE_COLLECTION = get_env_variable('CACHE_COLLECTION', 'cache')
 
+        # Setup Couchbase connection
+        cluster = connect_to_couchbase(CB_HOST, CB_USERNAME, CB_PASSWORD)
+
+        # Load and create/update search index
+        index_definition = load_index_definition("/home/kaustav/Desktop/vector-search-cookbook/cohere/cohere_index.json")
+        create_or_update_search_index(cluster, CB_BUCKET_NAME, SCOPE_NAME, index_definition)
+
         # Load dataset and create embeddings
         trec = load_trec_dataset()
         embeddings = create_embeddings(COHERE_API_KEY)
 
-        # Setup Couchbase and vector store
-        cluster = connect_to_couchbase(CB_HOST, CB_USERNAME, CB_PASSWORD)
+        # Setup vector store
         vector_store = get_vector_store(cluster, CB_BUCKET_NAME, SCOPE_NAME, COLLECTION_NAME, embeddings, INDEX_NAME)
         
         # Save data to vector store in batches
@@ -188,7 +239,6 @@ def main():
         rag_response = rag_chain.invoke(query)
         rag_elapsed_time = time.time() - start_time
         logging.info(f"RAG response generated in {rag_elapsed_time:.2f} seconds")
-
 
         print(f"RAG Response: {rag_response}")
 
