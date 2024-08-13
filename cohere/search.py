@@ -12,7 +12,7 @@ from couchbase.exceptions import CouchbaseException
 from couchbase.options import ClusterOptions
 from datasets import load_dataset
 from dotenv import load_dotenv
-from langchain_cohere import CohereEmbeddings
+from langchain_cohere import ChatCohere, CohereEmbeddings
 from langchain_core.documents import Document
 from langchain_core.globals import set_llm_cache
 from langchain_core.output_parsers import StrOutputParser
@@ -20,7 +20,6 @@ from langchain_core.prompts import ChatPromptTemplate
 from langchain_core.runnables import RunnablePassthrough
 from langchain_couchbase.cache import CouchbaseCache
 from langchain_couchbase.vectorstores import CouchbaseVectorStore
-from langchain_openai import ChatOpenAI
 from tqdm import tqdm
 
 # Set up logging
@@ -85,15 +84,6 @@ def load_trec_dataset(split='train[:1000]'):
         return dataset
     except Exception as e:
         raise ValueError(f"Error loading TREC dataset: {str(e)}")
-    
-def save_to_vector_store(vector_store, texts):
-    try:
-        documents = [Document(page_content=text) for text in texts]
-        uuids = [str(uuid4()) for _ in range(len(documents))]
-        vector_store.add_documents(documents=documents, ids=uuids)
-        logging.info(f"Stored {len(documents)} documents in Couchbase")
-    except Exception as e:
-        raise RuntimeError(f"Failed to save documents to vector store: {str(e)}")
 
 def save_to_vector_store_in_batches(vector_store, texts, batch_size=50):
     try:
@@ -117,6 +107,17 @@ def create_embeddings(api_key):
     except Exception as e:
         raise ValueError(f"Error creating CohereEmbeddings: {str(e)}")
 
+def create_llm(api_key, model="command"):
+    try:
+        llm = ChatCohere(
+            cohere_api_key=api_key,
+            model=model,
+            temperature=0
+        )
+        logging.info(f"Successfully created Cohere LLM with model {model}")
+        return llm
+    except Exception as e:
+        raise ValueError(f"Error creating Cohere LLM: {str(e)}")
     
 def semantic_search(vector_store, query, top_k=10):
     try:
@@ -145,25 +146,11 @@ def create_rag_chain(vector_store, llm):
     logging.info("Successfully created RAG chain")
     return chain
 
-def create_pure_llm_chain(llm):
-    template = """You are a helpful bot. Answer the question as truthfully as possible.
-
-    Question: {question}"""
-    prompt = ChatPromptTemplate.from_template(template)
-    chain = (
-        {"question": RunnablePassthrough()}
-        | prompt
-        | llm
-        | StrOutputParser()
-    )
-    logging.info("Successfully created pure LLM chain")
-    return chain
 
 def main():
     try:
         # Get environment variables
         COHERE_API_KEY = get_env_variable('COHERE_API_KEY')
-        OPENAI_API_KEY = get_env_variable("OPENAI_API_KEY")
         CB_HOST = get_env_variable('CB_HOST', 'couchbase://localhost')
         CB_USERNAME = get_env_variable('CB_USERNAME', 'Administrator')
         CB_PASSWORD = get_env_variable('CB_PASSWORD', 'password')
@@ -181,9 +168,6 @@ def main():
         # Setup Couchbase and vector store
         cluster = connect_to_couchbase(CB_HOST, CB_USERNAME, CB_PASSWORD)
         vector_store = get_vector_store(cluster, CB_BUCKET_NAME, SCOPE_NAME, COLLECTION_NAME, embeddings, INDEX_NAME)
-
-        # Save data to vector store in one go
-        # save_to_vector_store(vector_store, trec['text'])
         
         # Save data to vector store in batches
         save_to_vector_store_in_batches(vector_store, trec['text'], batch_size=50)
@@ -192,10 +176,9 @@ def main():
         cache = get_cache(cluster, CB_BUCKET_NAME, SCOPE_NAME, CACHE_COLLECTION)
         set_llm_cache(cache)
 
-        # Create LLMs and chains
-        llm = ChatOpenAI(temperature=0, model="gpt-4o-2024-08-06", streaming=True)
+        # Create LLM and chains
+        llm = create_llm(COHERE_API_KEY)
         rag_chain = create_rag_chain(vector_store, llm)
-        pure_llm_chain = create_pure_llm_chain(llm)
 
         # Sample query and search
         query = "What caused the 1929 Great Depression?"
@@ -206,13 +189,8 @@ def main():
         rag_elapsed_time = time.time() - start_time
         logging.info(f"RAG response generated in {rag_elapsed_time:.2f} seconds")
 
-        start_time = time.time()
-        pure_llm_response = pure_llm_chain.invoke(query)
-        pure_llm_elapsed_time = time.time() - start_time
-        logging.info(f"Pure LLM response generated in {pure_llm_elapsed_time:.2f} seconds")
 
         print(f"RAG Response: {rag_response}")
-        print(f"Pure LLM Response: {pure_llm_response}")
 
         # Perform semantic search
         results, search_elapsed_time = semantic_search(vector_store, query)
