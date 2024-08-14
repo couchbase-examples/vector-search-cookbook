@@ -92,13 +92,30 @@ def create_or_update_search_index(cluster, bucket_name, scope_name, index_defini
     
     except QueryIndexAlreadyExistsException:
         logging.info(f"Index '{index_name}' already exists. Skipping creation/update.")
+        
     except InternalServerFailureException as e:
         error_message = str(e)
-        if "collection: 'voyage' doesn't belong to scope: 'shared'" in error_message:
-            raise RuntimeError(f"Error: The collection 'voyage' does not exist in the scope '{scope_name}' of bucket '{bucket_name}'. "
-                               f"Please create the collection before creating the index.")
-        else:
+        logging.error(f"InternalServerFailureException raised: {error_message}")
+        
+        try:
+            # Accessing the response_body attribute from the context
+            error_context = e.context
+            response_body = error_context.response_body
+            if response_body:
+                error_details = json.loads(response_body)
+                error_message = error_details.get('error', '')
+                
+                if "collection: 'voyage' doesn't belong to scope: 'shared'" in error_message:
+                    raise ValueError("Collection 'voyage' does not belong to scope 'shared'. Please check the collection and scope names.")
+        
+        except ValueError as ve:
+            logging.error(str(ve))
+            raise
+        
+        except Exception as json_error:
+            logging.error(f"Failed to parse the error message: {json_error}")
             raise RuntimeError(f"Internal server error while creating/updating search index: {error_message}")
+    
     except Exception as e:
         raise RuntimeError(f"Unexpected error creating/updating search index: {str(e)}")
 
@@ -230,7 +247,7 @@ def main():
         cluster = connect_to_couchbase(CB_HOST, CB_USERNAME, CB_PASSWORD)
 
         # Load and create/update search index
-        index_definition = load_index_definition("/home/kaustav/Desktop/vector-search-cookbook/voyage/voyage_index.json")
+        index_definition = load_index_definition("/Users/kaustavghosh/Desktop/vector-search-cookbook/voyage/voyage_index.json")
         create_or_update_search_index(cluster, CB_BUCKET_NAME, SCOPE_NAME, index_definition)
 
         # Load dataset and create embeddings
