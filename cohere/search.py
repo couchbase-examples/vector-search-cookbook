@@ -10,7 +10,7 @@ import numpy as np
 from couchbase.auth import PasswordAuthenticator
 from couchbase.cluster import Cluster
 from couchbase.exceptions import (CouchbaseException,
-                                  QueryIndexAlreadyExistsException)
+                                  QueryIndexAlreadyExistsException,InternalServerFailureException)
 from couchbase.management.search import SearchIndex
 from couchbase.options import ClusterOptions
 from datasets import load_dataset
@@ -88,11 +88,32 @@ def create_or_update_search_index(cluster, bucket_name, scope_name, index_defini
         scope_index_manager.upsert_index(search_index)
         logging.info(f"Index '{index_name}' successfully created/updated.")
     
-    # QueryIndexAlreadyExistsException
     except QueryIndexAlreadyExistsException:
         logging.info(f"Index '{index_name}' already exists. Skipping creation/update.")
-    except Exception as e:
-        raise RuntimeError(f"Error creating/updating search index: {str(e)}")
+        
+    except InternalServerFailureException as e:
+        error_message = str(e)
+        logging.error(f"InternalServerFailureException raised: {error_message}")
+        
+        try:
+            # Accessing the response_body attribute from the context
+            error_context = e.context
+            response_body = error_context.response_body
+            if response_body:
+                error_details = json.loads(response_body)
+                error_message = error_details.get('error', '')
+                
+                if "collection: 'cohere' doesn't belong to scope: 'shared'" in error_message:
+                    raise ValueError("Collection 'cohere' does not belong to scope 'shared'. Please check the collection and scope names.")
+        
+        except ValueError as ve:
+            logging.error(str(ve))
+            raise
+        
+        except Exception as json_error:
+            logging.error(f"Failed to parse the error message: {json_error}")
+            raise RuntimeError(f"Internal server error while creating/updating search index: {error_message}")
+    
     
 def get_vector_store(cluster, db_bucket, db_scope, db_collection, embedding, index_name):
     try:
@@ -132,8 +153,7 @@ def load_trec_dataset(split='train[:1000]'):
 
 def save_to_vector_store_in_batches(vector_store, texts, batch_size=50):
     try:
-        num_batches = (len(texts) + batch_size - 1) // batch_size  # Calculate total number of batches
-        for i in tqdm(range(0, len(texts), batch_size), total=num_batches, desc="Processing Batches"):
+        for i in tqdm(range(0, len(texts), batch_size), desc="Processing Batches"):
             batch = texts[i:i + batch_size]
             documents = [Document(page_content=text) for text in batch]
             uuids = [str(uuid4()) for _ in range(len(documents))]
@@ -210,7 +230,7 @@ def main():
         cluster = connect_to_couchbase(CB_HOST, CB_USERNAME, CB_PASSWORD)
 
         # Load and create/update search index
-        index_definition = load_index_definition("/home/kaustav/Desktop/vector-search-cookbook/cohere/cohere_index.json")
+        index_definition = load_index_definition("/Users/kaustavghosh/Desktop/vector-search-cookbook/cohere/cohere_index.json")
         create_or_update_search_index(cluster, CB_BUCKET_NAME, SCOPE_NAME, index_definition)
 
         # Load dataset and create embeddings
