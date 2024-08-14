@@ -10,7 +10,8 @@ import numpy as np
 from couchbase.auth import PasswordAuthenticator
 from couchbase.cluster import Cluster
 from couchbase.exceptions import (CouchbaseException,
-                                  QueryIndexAlreadyExistsException,InternalServerFailureException)
+                                  InternalServerFailureException,
+                                  QueryIndexAlreadyExistsException)
 from couchbase.management.search import SearchIndex
 from couchbase.options import ClusterOptions
 from datasets import load_dataset
@@ -32,13 +33,17 @@ logging.basicConfig(level=logging.INFO, format='%(asctime)s - %(levelname)s - %(
 load_dotenv()
 
 def get_env_variable(var_name, default_value=None):
-    value = os.getenv(var_name)
-    if value is None:
-        if default_value is not None:
-            warnings.warn(f"Environment variable {var_name} is missing. Assigning default value: {default_value}")
-            return default_value
+    value = os.getenv(var_name, default_value)
+    
+    if value == default_value:
+        if var_name not in os.environ:
+            warnings.warn(f"Environment variable '{var_name}' is not set. Using default value: {default_value}")
         else:
-            raise ValueError(f"Environment variable {var_name} is missing and no default value is provided.")
+            warnings.warn(f"Environment variable '{var_name}' is set to the default value: {default_value}")
+    
+    if value is None:
+        raise ValueError(f"Environment variable '{var_name}' is not set and no default value is provided.")
+    
     return value
 
 def connect_to_couchbase(connection_string, db_username, db_password):
