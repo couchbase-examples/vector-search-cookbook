@@ -16,15 +16,17 @@ from couchbase.management.search import SearchIndex
 from couchbase.options import ClusterOptions
 from datasets import load_dataset
 from dotenv import load_dotenv
+from langchain_community.chat_models import JinaChat
 from langchain_community.embeddings import JinaEmbeddings
 from langchain_core.documents import Document
 from langchain_core.globals import set_llm_cache
-from langchain_core.output_parsers import StrOutputParser
 from langchain_core.prompts import ChatPromptTemplate
+from langchain_core.prompts.chat import (ChatPromptTemplate,
+                                         HumanMessagePromptTemplate,
+                                         SystemMessagePromptTemplate)
 from langchain_core.runnables import RunnablePassthrough
 from langchain_couchbase.cache import CouchbaseCache
 from langchain_couchbase.vectorstores import CouchbaseVectorStore
-from langchain_openai import ChatOpenAI
 from tqdm import tqdm
 
 # Set up logging
@@ -175,17 +177,58 @@ def create_embeddings(api_key):
     except Exception as e:
         raise ValueError(f"Error creating JinaEmbeddings: {str(e)}")
 
-def create_llm(api_key, model="gpt-4o-2024-08-06"):
+def create_llm(jinachat_api_key, model="jina-clip-v1"):
     try:
-        llm = ChatOpenAI(
-            openai_api_key=api_key,
-            model=model,
-            temperature=0
-        )
-        logging.info(f"Successfully created OpenAI LLM with model {model}")
+        llm = JinaChat(temperature=0, jinachat_api_key=jinachat_api_key, model=model)
+        logging.info("Successfully created JinaChat")
         return llm
     except Exception as e:
-        raise ValueError(f"Error creating OpenAI LLM: {str(e)}")
+        logging.error(f"Error creating JinaChat: {str(e)}. Please check your API key and network connection.")
+        raise
+
+def create_rag_chain(vector_store, llm):
+    system_template = "You are a helpful assistant that answers questions based on the provided context."
+    system_message_prompt = SystemMessagePromptTemplate.from_template(system_template)
+    
+    human_template = "Context: {context}\n\nQuestion: {question}"
+    human_message_prompt = HumanMessagePromptTemplate.from_template(human_template)
+    
+    chat_prompt = ChatPromptTemplate.from_messages([
+        system_message_prompt,
+        human_message_prompt
+    ])
+
+    def format_docs(docs):
+        return "\n\n".join(doc.page_content for doc in docs)
+
+    chain = (
+        {"context": lambda x: format_docs(vector_store.similarity_search(x)), "question": RunnablePassthrough()}
+        | chat_prompt
+        | llm
+    )
+    logging.info("Successfully created RAG chain")
+    return chain
+
+def create_pure_llm_chain(llm):
+    system_template = "You are a helpful assistant that answers questions truthfully."
+    system_message_prompt = SystemMessagePromptTemplate.from_template(system_template)
+    
+    human_template = "{question}"
+    human_message_prompt = HumanMessagePromptTemplate.from_template(human_template)
+    
+    chat_prompt = ChatPromptTemplate.from_messages([
+        system_message_prompt,
+        human_message_prompt
+    ])
+
+    chain = (
+        {"question": RunnablePassthrough()}
+        | chat_prompt
+        | llm
+    )
+    logging.info("Successfully created pure LLM chain")
+    return chain
+
 
 def semantic_search(vector_store, query, top_k=10):
     try:
@@ -199,39 +242,12 @@ def semantic_search(vector_store, query, top_k=10):
     except CouchbaseException as e:
         raise RuntimeError(f"Error performing semantic search: {str(e)}")
 
-def create_rag_chain(vector_store, llm):
-    template = """You are a helpful bot. If you cannot answer based on the context provided, respond with a generic answer. Answer the question as truthfully as possible using the context below:
-    {context}
-
-    Question: {question}"""
-    prompt = ChatPromptTemplate.from_template(template)
-    chain = (
-        {"context": vector_store.as_retriever(), "question": RunnablePassthrough()}
-        | prompt
-        | llm
-        | StrOutputParser()
-    )
-    logging.info("Successfully created RAG chain")
-    return chain
-
-def create_pure_llm_chain(llm):
-    template = """You are a helpful bot. Answer the question as truthfully as possible.
-
-    Question: {question}"""
-    prompt = ChatPromptTemplate.from_template(template)
-    chain = (
-        {"question": RunnablePassthrough()}
-        | prompt
-        | llm
-        | StrOutputParser()
-    )
-    logging.info("Successfully created pure LLM chain")
-    return chain
 
 def main():
     try:
         # Get environment variables
         JINA_API_KEY = get_env_variable('JINA_API_KEY')
+        JINACHAT_API_KEY = get_env_variable('JINACHAT_API_KEY')
         OPENAI_API_KEY = get_env_variable("OPENAI_API_KEY")
         CB_HOST = get_env_variable('CB_HOST', 'couchbase://localhost')
         CB_USERNAME = get_env_variable('CB_USERNAME', 'Administrator')
@@ -247,7 +263,7 @@ def main():
         cluster = connect_to_couchbase(CB_HOST, CB_USERNAME, CB_PASSWORD)
 
         # Load and create/update search index
-        index_definition = load_index_definition("/Users/kaustavghosh/Desktop/vector-search-cookbook/jinaai/jina_index.json")
+        index_definition = load_index_definition(os.path.join(os.path.dirname(__file__), 'jina_index.json'))
         create_or_update_search_index(cluster, CB_BUCKET_NAME, SCOPE_NAME, index_definition)
 
         # Load dataset and create embeddings
@@ -264,8 +280,8 @@ def main():
         cache = get_cache(cluster, CB_BUCKET_NAME, SCOPE_NAME, CACHE_COLLECTION)
         set_llm_cache(cache)
 
-        # Create LLMs and chains
-        llm = create_llm(OPENAI_API_KEY)
+        # Create LLM and chains
+        llm = create_llm(JINACHAT_API_KEY)
         rag_chain = create_rag_chain(vector_store, llm)
         pure_llm_chain = create_pure_llm_chain(llm)
 
@@ -283,8 +299,8 @@ def main():
         pure_llm_elapsed_time = time.time() - start_time
         logging.info(f"Pure LLM response generated in {pure_llm_elapsed_time:.2f} seconds")
 
-        print(f"RAG Response: {rag_response}")
-        print(f"Pure LLM Response: {pure_llm_response}")
+        print(f"RAG Response: {rag_response.content}")
+        print(f"Pure LLM Response: {pure_llm_response.content}")
 
         # Perform semantic search
         results, search_elapsed_time = semantic_search(vector_store, query)

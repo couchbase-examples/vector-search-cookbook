@@ -7,5 +7,6 @@ langchain-openai
 langchain-community
 tqdm
 dotenv
+openai==0.27
 
 
