@@ -6,10 +6,10 @@ import warnings
 from datetime import timedelta
 from uuid import uuid4
 
-import numpy as np
 from couchbase.auth import PasswordAuthenticator
 from couchbase.cluster import Cluster
-from couchbase.exceptions import (CouchbaseException,
+from couchbase.exceptions import (CollectionNotFoundException,
+                                  CouchbaseException,
                                   InternalServerFailureException,
                                   QueryIndexAlreadyExistsException)
 from couchbase.management.search import SearchIndex
@@ -21,6 +21,7 @@ from langchain_core.documents import Document
 from langchain_core.globals import set_llm_cache
 from langchain_core.output_parsers import StrOutputParser
 from langchain_core.prompts import ChatPromptTemplate
+from langchain_core.prompts.chat import ChatPromptTemplate
 from langchain_core.runnables import RunnablePassthrough
 from langchain_couchbase.cache import CouchbaseCache
 from langchain_couchbase.vectorstores import CouchbaseVectorStore
@@ -56,6 +57,59 @@ def connect_to_couchbase(connection_string, db_username, db_password):
         return cluster
     except Exception as e:
         raise ConnectionError(f"Failed to connect to Couchbase: {str(e)}")
+
+def setup_collection(cluster, bucket_name, scope_name, collection_name):
+    try:
+        bucket = cluster.bucket(bucket_name)
+        bucket_manager = bucket.collections()
+        
+        # Check if collection exists, create if it doesn't
+        collections = bucket_manager.get_all_scopes()
+        collection_exists = any(
+            scope.name == scope_name and collection_name in [col.name for col in scope.collections]
+            for scope in collections
+        )
+        
+        if not collection_exists:
+            logging.info(f"Collection '{collection_name}' does not exist. Creating it...")
+            # Use the new signature for create_collection
+            bucket_manager.create_collection(scope_name, collection_name)
+            logging.info(f"Collection '{collection_name}' created successfully.")
+        else:
+            logging.info(f"Collection '{collection_name}' already exists.")
+        
+        # Wait for the collection to be available
+        max_retries = 3
+        retry_delay = 1
+        for _ in range(max_retries):
+            try:
+                collection = bucket.scope(scope_name).collection(collection_name)
+                break
+            except CollectionNotFoundException:
+                time.sleep(retry_delay)
+        else:
+            raise RuntimeError(f"Collection '{collection_name}' not available after {max_retries} retries")
+        
+        # Ensure primary index exists
+        try:
+            cluster.query(f"CREATE PRIMARY INDEX ON `{bucket_name}`.`{scope_name}`.`{collection_name}`").execute()
+            logging.info("Primary index created successfully.")
+        except QueryIndexAlreadyExistsException:
+            logging.info("Primary index already exists.")
+        except Exception as e:
+            logging.warning(f"Error creating primary index: {str(e)}")
+        
+        # Clear all documents in the collection
+        try:
+            query = f"DELETE FROM `{bucket_name}`.`{scope_name}`.`{collection_name}`"
+            cluster.query(query).execute()
+            logging.info("All documents cleared from the collection.")
+        except Exception as e:
+            logging.warning(f"Error while clearing documents: {str(e)}. The collection might be empty.")
+        
+        return collection
+    except Exception as e:
+        raise RuntimeError(f"Error setting up collection: {str(e)}")
 
 def load_index_definition(file_path):
     try:
@@ -233,9 +287,13 @@ def main():
 
         # Setup Couchbase connection
         cluster = connect_to_couchbase(CB_HOST, CB_USERNAME, CB_PASSWORD)
+        
+        # Setup collection
+        setup_collection(cluster, CB_BUCKET_NAME, SCOPE_NAME, COLLECTION_NAME)
+        setup_collection(cluster, CB_BUCKET_NAME, SCOPE_NAME, CACHE_COLLECTION)
 
         # Load and create/update search index
-        index_definition = load_index_definition("/Users/kaustavghosh/Desktop/vector-search-cookbook/cohere/cohere_index.json")
+        index_definition = load_index_definition(os.path.join(os.path.dirname(__file__), 'cohere_index.json'))
         create_or_update_search_index(cluster, CB_BUCKET_NAME, SCOPE_NAME, index_definition)
 
         # Load dataset and create embeddings
