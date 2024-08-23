@@ -2,14 +2,12 @@ import json
 import logging
 import os
 import time
-import warnings
 from datetime import timedelta
 from uuid import uuid4
 
 from couchbase.auth import PasswordAuthenticator
 from couchbase.cluster import Cluster
-from couchbase.exceptions import (CollectionNotFoundException,
-                                  CouchbaseException,
+from couchbase.exceptions import (CouchbaseException,
                                   InternalServerFailureException,
                                   QueryIndexAlreadyExistsException)
 from couchbase.management.search import SearchIndex
@@ -33,21 +31,21 @@ logging.basicConfig(level=logging.INFO, format='%(asctime)s - %(levelname)s - %(
 # Load environment variables from .env file
 load_dotenv()
 
-def get_env_variable(var_name, default_value=None):
-    value = os.getenv(var_name, default_value)
-    
-    if value == default_value:
-        if var_name not in os.environ:
-            warnings.warn(f"Environment variable '{var_name}' is not set. Using default value: {default_value}")
-        else:
-            warnings.warn(f"Environment variable '{var_name}' is set to the default value: {default_value}")
-    
-    if value is None:
-        raise ValueError(f"Environment variable '{var_name}' is not set and no default value is provided.")
-    
-    return value
-
 def connect_to_couchbase(connection_string, db_username, db_password):
+    """
+    Establishes a connection to Couchbase server.
+
+    Args:
+        connection_string (str): The Couchbase connection string.
+        db_username (str): The database username.
+        db_password (str): The database password.
+
+    Returns:
+        Cluster: A connected Couchbase Cluster object.
+
+    Raises:
+        ConnectionError: If connection to Couchbase fails.
+    """
     try:
         auth = PasswordAuthenticator(db_username, db_password)
         options = ClusterOptions(auth)
@@ -59,6 +57,21 @@ def connect_to_couchbase(connection_string, db_username, db_password):
         raise ConnectionError(f"Failed to connect to Couchbase: {str(e)}")
 
 def setup_collection(cluster, bucket_name, scope_name, collection_name):
+    """
+    Sets up a collection in Couchbase, creating it if it doesn't exist.
+
+    Args:
+        cluster (Cluster): The connected Couchbase Cluster object.
+        bucket_name (str): The name of the bucket.
+        scope_name (str): The name of the scope.
+        collection_name (str): The name of the collection.
+
+    Returns:
+        Collection: The Couchbase Collection object.
+
+    Raises:
+        RuntimeError: If there's an error setting up the collection.
+    """
     try:
         bucket = cluster.bucket(bucket_name)
         bucket_manager = bucket.collections()
@@ -72,30 +85,17 @@ def setup_collection(cluster, bucket_name, scope_name, collection_name):
         
         if not collection_exists:
             logging.info(f"Collection '{collection_name}' does not exist. Creating it...")
-            # Use the new signature for create_collection
             bucket_manager.create_collection(scope_name, collection_name)
             logging.info(f"Collection '{collection_name}' created successfully.")
         else:
-            logging.info(f"Collection '{collection_name}' already exists.")
+            logging.info(f"Collection '{collection_name}' already exists. Skipping creation.")
         
-        # Wait for the collection to be available
-        max_retries = 3
-        retry_delay = 1
-        for _ in range(max_retries):
-            try:
-                collection = bucket.scope(scope_name).collection(collection_name)
-                break
-            except CollectionNotFoundException:
-                time.sleep(retry_delay)
-        else:
-            raise RuntimeError(f"Collection '{collection_name}' not available after {max_retries} retries")
+        collection = bucket.scope(scope_name).collection(collection_name)
         
         # Ensure primary index exists
         try:
-            cluster.query(f"CREATE PRIMARY INDEX ON `{bucket_name}`.`{scope_name}`.`{collection_name}`").execute()
-            logging.info("Primary index created successfully.")
-        except QueryIndexAlreadyExistsException:
-            logging.info("Primary index already exists.")
+            cluster.query(f"CREATE PRIMARY INDEX IF NOT EXISTS ON `{bucket_name}`.`{scope_name}`.`{collection_name}`").execute()
+            logging.info("Primary index present or created successfully.")
         except Exception as e:
             logging.warning(f"Error creating primary index: {str(e)}")
         
@@ -112,6 +112,18 @@ def setup_collection(cluster, bucket_name, scope_name, collection_name):
         raise RuntimeError(f"Error setting up collection: {str(e)}")
 
 def load_index_definition(file_path):
+    """
+    Loads a Couchbase search index definition from a JSON file.
+
+    Args:
+        file_path (str): The path to the JSON file containing the index definition.
+
+    Returns:
+        dict: The loaded index definition.
+
+    Raises:
+        ValueError: If there's an error loading the index definition.
+    """
     try:
         with open(file_path, 'r') as file:
             index_definition = json.load(file)
@@ -120,6 +132,19 @@ def load_index_definition(file_path):
         raise ValueError(f"Error loading index definition from {file_path}: {str(e)}")
     
 def create_or_update_search_index(cluster, bucket_name, scope_name, index_definition):
+    """
+    Creates or updates a Couchbase search index.
+
+    Args:
+        cluster (Cluster): The connected Couchbase Cluster object.
+        bucket_name (str): The name of the bucket.
+        scope_name (str): The name of the scope.
+        index_definition (dict): The search index definition.
+
+    Raises:
+        ValueError: If there's an error with the collection or scope names.
+        RuntimeError: If there's an internal server error while creating/updating the index.
+    """
     try:
         scope_index_manager = cluster.bucket(bucket_name).scope(scope_name).search_indexes()
         
@@ -128,20 +153,12 @@ def create_or_update_search_index(cluster, bucket_name, scope_name, index_defini
         index_name = index_definition["name"]
         
         if index_name in [index.name for index in existing_indexes]:
-            logging.info(f"Index '{index_name}' already exists. Updating...")
+            logging.info(f"Index '{index_name}' found")
         else:
             logging.info(f"Creating new index '{index_name}'...")
         
-        # Create SearchIndex object
-        search_index = SearchIndex(
-            name=index_definition["name"],
-            source_type=index_definition.get("sourceType", "couchbase"),
-            idx_type=index_definition["type"],
-            source_name=index_definition["sourceName"],
-            params=index_definition["params"],
-            source_params=index_definition.get("sourceParams", {}),
-            plan_params=index_definition.get("planParams", {})
-        )
+        # Create SearchIndex object from JSON definition
+        search_index = SearchIndex.from_json(index_definition)
         
         # Upsert the index (create if not exists, update if exists)
         scope_index_manager.upsert_index(search_index)
@@ -173,8 +190,24 @@ def create_or_update_search_index(cluster, bucket_name, scope_name, index_defini
             logging.error(f"Failed to parse the error message: {json_error}")
             raise RuntimeError(f"Internal server error while creating/updating search index: {error_message}")
     
-    
 def get_vector_store(cluster, db_bucket, db_scope, db_collection, embedding, index_name):
+    """
+    Creates and returns a CouchbaseVectorStore object.
+
+    Args:
+        cluster (Cluster): The connected Couchbase Cluster object.
+        db_bucket (str): The name of the bucket.
+        db_scope (str): The name of the scope.
+        db_collection (str): The name of the collection.
+        embedding (Embeddings): The embedding model to use.
+        index_name (str): The name of the search index.
+
+    Returns:
+        CouchbaseVectorStore: The created vector store object.
+
+    Raises:
+        ValueError: If there's an error creating the vector store.
+    """
     try:
         vector_store = CouchbaseVectorStore(
             cluster=cluster,
@@ -190,6 +223,21 @@ def get_vector_store(cluster, db_bucket, db_scope, db_collection, embedding, ind
         raise ValueError(f"Failed to create vector store: {str(e)}")
 
 def get_cache(cluster, db_bucket, db_scope, cache_collection):
+    """
+    Creates and returns a CouchbaseCache object.
+
+    Args:
+        cluster (Cluster): The connected Couchbase Cluster object.
+        db_bucket (str): The name of the bucket.
+        db_scope (str): The name of the scope.
+        cache_collection (str): The name of the cache collection.
+
+    Returns:
+        CouchbaseCache: The created cache object.
+
+    Raises:
+        ValueError: If there's an error creating the cache.
+    """
     try:
         cache = CouchbaseCache(
             cluster=cluster,
@@ -203,6 +251,18 @@ def get_cache(cluster, db_bucket, db_scope, cache_collection):
         raise ValueError(f"Failed to create cache: {str(e)}")
 
 def load_trec_dataset(split='train[:1000]'):
+    """
+    Loads the TREC dataset.
+
+    Args:
+        split (str, optional): The dataset split to load. Defaults to 'train[:1000]'.
+
+    Returns:
+        Dataset: The loaded TREC dataset.
+
+    Raises:
+        ValueError: If there's an error loading the dataset.
+    """
     try:
         dataset = load_dataset('trec', split=split)
         logging.info(f"Successfully loaded TREC dataset with {len(dataset)} samples")
@@ -211,6 +271,17 @@ def load_trec_dataset(split='train[:1000]'):
         raise ValueError(f"Error loading TREC dataset: {str(e)}")
 
 def save_to_vector_store_in_batches(vector_store, texts, batch_size=50):
+    """
+    Saves documents to the vector store in batches.
+
+    Args:
+        vector_store (VectorStore): The vector store to save documents to.
+        texts (list): List of text documents to save.
+        batch_size (int, optional): The batch size for processing. Defaults to 50.
+
+    Raises:
+        RuntimeError: If there's an error saving documents to the vector store.
+    """
     try:
         for i in tqdm(range(0, len(texts), batch_size), desc="Processing Batches"):
             batch = texts[i:i + batch_size]
@@ -221,6 +292,18 @@ def save_to_vector_store_in_batches(vector_store, texts, batch_size=50):
         raise RuntimeError(f"Failed to save documents to vector store: {str(e)}")
 
 def create_embeddings(api_key):
+    """
+    Creates and returns a CohereEmbeddings object.
+
+    Args:
+        api_key (str): The Cohere API key.
+
+    Returns:
+        CohereEmbeddings: The created embeddings object.
+
+    Raises:
+        ValueError: If there's an error creating the embeddings.
+    """
     try:
         embeddings = CohereEmbeddings(
             cohere_api_key=api_key, 
@@ -232,6 +315,19 @@ def create_embeddings(api_key):
         raise ValueError(f"Error creating CohereEmbeddings: {str(e)}")
 
 def create_llm(api_key, model="command"):
+    """
+    Creates and returns a ChatCohere object.
+
+    Args:
+        api_key (str): The Cohere API key.
+        model (str, optional): The model to use. Defaults to "command".
+
+    Returns:
+        ChatCohere: The created LLM object.
+
+    Raises:
+        ValueError: If there's an error creating the LLM.
+    """
     try:
         llm = ChatCohere(
             cohere_api_key=api_key,
@@ -244,6 +340,20 @@ def create_llm(api_key, model="command"):
         raise ValueError(f"Error creating Cohere LLM: {str(e)}")
     
 def semantic_search(vector_store, query, top_k=10):
+    """
+    Performs a semantic search using the vector store.
+
+    Args:
+        vector_store (VectorStore): The vector store to search in.
+        query (str): The search query.
+        top_k (int, optional): The number of top results to return. Defaults to 10.
+
+    Returns:
+        tuple: A tuple containing the search results and the elapsed time.
+
+    Raises:
+        RuntimeError: If there's an error performing the semantic search.
+    """
     try:
         start_time = time.time()
         search_results = vector_store.similarity_search_with_score(query, k=top_k)
@@ -256,6 +366,16 @@ def semantic_search(vector_store, query, top_k=10):
         raise RuntimeError(f"Error performing semantic search: {str(e)}")
 
 def create_rag_chain(vector_store, llm):
+    """
+    Creates and returns a RAG (Retrieval-Augmented Generation) chain.
+
+    Args:
+        vector_store (VectorStore): The vector store to use for retrieval.
+        llm (BaseLLM): The language model to use for generation.
+
+    Returns:
+        Chain: The created RAG chain.
+    """
     template = """You are a helpful bot. If you cannot answer based on the context provided, respond with a generic answer. Answer the question as truthfully as possible using the context below:
     {context}
 
@@ -270,21 +390,48 @@ def create_rag_chain(vector_store, llm):
     logging.info("Successfully created RAG chain")
     return chain
 
+def demonstrate_cache(rag_chain):
+    """
+    Demonstrates the caching functionality of the RAG chain.
 
-def main():
+    This function runs a series of queries, including repeated ones,
+    to show how caching affects response times.
+
+    Args:
+        rag_chain (Chain): The RAG chain to use for queries.
+    """
+    queries = [
+        "How does photosynthesis work?",
+        "What is the capital of France?",
+        "What caused the 1929 Great Depression?",
+        "How does photosynthesis work?",  # Repeated query
+    ]
+
+    for i, query in enumerate(queries, 1):
+        print(f"\nQuery {i}: {query}")
+        start_time = time.time()
+        response = rag_chain.invoke(query)
+        elapsed_time = time.time() - start_time
+        print(f"Response: {response}")
+        print(f"Time taken: {elapsed_time:.2f} seconds")
+
+if __name__ == "__main__":
     try:
         # Get environment variables
-        COHERE_API_KEY = get_env_variable('COHERE_API_KEY')
-        CB_HOST = get_env_variable('CB_HOST', 'couchbase://localhost')
-        CB_USERNAME = get_env_variable('CB_USERNAME', 'Administrator')
-        CB_PASSWORD = get_env_variable('CB_PASSWORD', 'password')
-        CB_BUCKET_NAME = get_env_variable('CB_BUCKET_NAME', 'vector-search-testing')
-        INDEX_NAME = get_env_variable('INDEX_NAME', 'vector_search_cohere')
+        COHERE_API_KEY = os.getenv('COHERE_API_KEY')
+        CB_HOST = os.getenv('CB_HOST', 'couchbase://localhost')
+        CB_USERNAME = os.getenv('CB_USERNAME', 'Administrator')
+        CB_PASSWORD = os.getenv('CB_PASSWORD', 'password')
+        CB_BUCKET_NAME = os.getenv('CB_BUCKET_NAME', 'vector-search-testing')
+        INDEX_NAME = os.getenv('INDEX_NAME', 'vector_search_cohere')
         
-        SCOPE_NAME = get_env_variable('SCOPE_NAME', 'shared')
-        COLLECTION_NAME = get_env_variable('COLLECTION_NAME', 'cohere')
-        CACHE_COLLECTION = get_env_variable('CACHE_COLLECTION', 'cache')
-
+        SCOPE_NAME = os.getenv('SCOPE_NAME', 'shared')
+        COLLECTION_NAME = os.getenv('COLLECTION_NAME', 'cohere')
+        CACHE_COLLECTION = os.getenv('CACHE_COLLECTION', 'cache')
+        
+        if not COHERE_API_KEY:
+            raise ValueError("COHERE_API_KEY environment variable is not set")
+        
         # Setup Couchbase connection
         cluster = connect_to_couchbase(CB_HOST, CB_USERNAME, CB_PASSWORD)
         
@@ -313,16 +460,15 @@ def main():
         # Create LLM and chains
         llm = create_llm(COHERE_API_KEY)
         rag_chain = create_rag_chain(vector_store, llm)
-
+        
         # Sample query and search
         query = "What caused the 1929 Great Depression?"
 
-        # Get responses
+        # Get RAG response
         start_time = time.time()
         rag_response = rag_chain.invoke(query)
         rag_elapsed_time = time.time() - start_time
         logging.info(f"RAG response generated in {rag_elapsed_time:.2f} seconds")
-
         print(f"RAG Response: {rag_response}")
 
         # Perform semantic search
@@ -330,9 +476,10 @@ def main():
         print(f"\nSemantic Search Results (completed in {search_elapsed_time:.2f} seconds):")
         for result in results:
             print(f"Distance: {result['distance']:.4f}, Text: {result['text']}")
+            
+        # Demonstrate cache functionality
+        print("\nDemonstrating cache functionality:")
+        demonstrate_cache(rag_chain)
 
     except Exception as e:
         logging.error(f"An error occurred: {str(e)}")
-
-if __name__ == "__main__":
-    main()
