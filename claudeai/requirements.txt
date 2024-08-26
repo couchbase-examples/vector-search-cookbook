@@ -1,5 +1,4 @@
-numpy==1.26.4
-couchbase==4.2.1
+couchbase==4.3.0
 datasets==2.14.7
 langchain-core==0.2.33
 langchain-couchbase==0.1.1
