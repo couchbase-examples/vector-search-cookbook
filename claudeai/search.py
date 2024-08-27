@@ -425,10 +425,10 @@ def demonstrate_cache(rag_chain):
         The results are printed to the console.
     """
     queries = [
-        "How does photosynthesis work?",
+        "Why do heavier objects travel downhill faster?",
         "What is the capital of France?",
-        "What caused the 1929 Great Depression?",
-        "How does photosynthesis work?",  # Repeated query
+        "What caused the 1929 Great Depression?", # Repeated query
+        "Why do heavier objects travel downhill faster?",  # Repeated query
     ]
 
     for i, query in enumerate(queries, 1):
@@ -436,7 +436,7 @@ def demonstrate_cache(rag_chain):
         start_time = time.time()
         response = rag_chain.invoke(query)
         elapsed_time = time.time() - start_time
-        print(f"Response: {response}")
+        print(f"Response: {response.content}")
         print(f"Time taken: {elapsed_time:.2f} seconds")
 
 
