@@ -367,13 +367,15 @@ def semantic_search(vector_store, query, top_k=10):
     try:
         start_time = time.time()
         search_results = vector_store.similarity_search_with_score(query, k=top_k)
-        results = [{'id': doc.metadata.get('id', 'N/A'), 'text': doc.page_content, 'distance': score} 
-                   for doc, score in search_results]
-        elapsed_time = time.time() - start_time
-        logging.info(f"Semantic search completed in {elapsed_time:.2f} seconds")
-        return results, elapsed_time
+        search_elapsed_time = time.time() - start_time
+
+        logging.info(f"Semantic search completed in {search_elapsed_time:.2f} seconds")
+        return search_results, search_elapsed_time
+
     except CouchbaseException as e:
         raise RuntimeError(f"Error performing semantic search: {str(e)}")
+    except Exception as e:
+        raise RuntimeError(f"Unexpected error: {str(e)}")
 
 def create_rag_chain(vector_store, llm):
     """
@@ -485,10 +487,10 @@ if __name__ == "__main__":
         query = "What caused the 1929 Great Depression?"
         
         # Perform semantic search
-        results, search_elapsed_time = semantic_search(vector_store, query)
+        search_results, search_elapsed_time = semantic_search(vector_store, query)
         print(f"\nSemantic Search Results (completed in {search_elapsed_time:.2f} seconds):")
-        for result in results:
-            print(f"Distance: {result['distance']:.4f}, Text: {result['text']}")
+        for doc, score in search_results:
+            print(f"Distance: {score:.4f}, Text: {doc.page_content}")
 
         # Get RAG response
         start_time = time.time()
