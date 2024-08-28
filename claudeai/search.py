@@ -428,7 +428,6 @@ def demonstrate_cache(rag_chain):
     """
     queries = [
         "Why do heavier objects travel downhill faster?",
-        "What is the capital of France?",
         "What caused the 1929 Great Depression?", # Repeated query
         "Why do heavier objects travel downhill faster?",  # Repeated query
     ]
