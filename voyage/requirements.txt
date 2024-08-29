@@ -1,7 +1,5 @@
-couchbase==4.3.0
 datasets==2.14.7
-langchain-core==0.2.33
 langchain-couchbase==0.1.1
+langchain-openai==0.1.22
 langchain-voyage==0.1.1
-tqdm==4.66.4
 python-dotenv==1.0.1
