@@ -289,7 +289,7 @@ def create_embeddings(api_key):
     except Exception as e:
         raise ValueError(f"Error creating JinaEmbeddings: {str(e)}")
 
-def create_llm(jinachat_api_key, model="jina-clip-v1"):
+def create_llm(jinachat_api_key):
     """
     Creates and returns a JinaChat language model object.
     Args:
@@ -301,7 +301,7 @@ def create_llm(jinachat_api_key, model="jina-clip-v1"):
         ValueError: If there's an error creating the language model.
     """
     try:
-        llm = JinaChat(temperature=0, jinachat_api_key=jinachat_api_key, model=model)
+        llm = JinaChat(temperature=0, jinachat_api_key=jinachat_api_key)
         logging.info("Successfully created JinaChat")
         return llm
     except Exception as e:
