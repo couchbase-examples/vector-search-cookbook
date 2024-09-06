@@ -7,9 +7,11 @@ from uuid import uuid4
 
 from couchbase.auth import PasswordAuthenticator
 from couchbase.cluster import Cluster
-from couchbase.exceptions import (CouchbaseException,
-                                  InternalServerFailureException,
-                                  QueryIndexAlreadyExistsException)
+from couchbase.exceptions import (
+    CouchbaseException,
+    InternalServerFailureException,
+    QueryIndexAlreadyExistsException,
+)
 from couchbase.management.search import SearchIndex
 from couchbase.options import ClusterOptions
 from datasets import load_dataset
@@ -315,7 +317,7 @@ def create_llm(deployment_name, api_key, api_base):
             deployment_name=deployment_name,
             openai_api_key=api_key,
             azure_endpoint=api_base,
-            openai_api_version="2023-05-15"
+            openai_api_version="2024-07-01-preview"
         )
         logging.info("Successfully created Azure OpenAI Chat model")
         return llm
@@ -458,10 +460,10 @@ if __name__ == "__main__":
         query = "What caused the 1929 Great Depression?"
 
         # Perform semantic search
-        results, search_elapsed_time = semantic_search(vector_store, query)
+        search_results, search_elapsed_time = semantic_search(vector_store, query)
         print(f"\nSemantic Search Results (completed in {search_elapsed_time:.2f} seconds):")
-        for result in results:
-            print(f"Distance: {result['distance']:.4f}, Text: {result['text']}")
+        for doc, score in search_results:
+            print(f"Distance: {score:.4f}, Text: {doc.page_content}")
 
         # Get RAG response
         start_time = time.time()
