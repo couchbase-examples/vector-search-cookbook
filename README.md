@@ -106,7 +106,7 @@ The Couchbase index is structured to support multiple embedding types:
       "dynamic": false,
       "fields": {
         "embedding": {
-          "dims": 4096,
+          "dims": 1024,
           "type": "vector"
         }
       }
@@ -115,7 +115,7 @@ The Couchbase index is structured to support multiple embedding types:
       "dynamic": false,
       "fields": {
         "embedding": {
-          "dims": 1024,
+          "dims": 1536,
           "type": "vector"
         }
       }
@@ -124,7 +124,7 @@ The Couchbase index is structured to support multiple embedding types:
       "dynamic": false,
       "fields": {
         "embedding": {
-          "dims": 512,
+          "dims": 768,
           "type": "vector"
         }
       }
