@@ -4,7 +4,7 @@
  "params": {
   "mapping": {
    "types": {
-    "_default._default": {
+    "_default.mistralai": {
      "enabled": true,
      "dynamic": true,
      "properties": {
