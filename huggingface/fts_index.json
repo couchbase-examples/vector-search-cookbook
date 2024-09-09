@@ -4,7 +4,7 @@
  "params": {
   "mapping": {
    "types": {
-    "_default._default": {
+    "_default.huggingface": {
      "enabled": true,
      "dynamic": true,
      "properties": {
@@ -68,7 +68,7 @@
   }
  },
  "sourceType": "couchbase",
- "sourceName": "hugging_face",
+ "sourceName": "huggingface",
  "sourceUUID": "2c2e8a2d88811b8818fac622a62aba03",
  "sourceParams": {},
  "planParams": {
