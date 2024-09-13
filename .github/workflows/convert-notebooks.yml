@@ -1,0 +1,62 @@
+name: Convert and Push Notebooks
+
+on:
+  push:
+    paths:
+      - '**/**.ipynb'
+  schedule:
+    - cron: '30 8 * * 1'  # At 08:30 on Monday, 30 minutes before dev portal's weekly build
+  workflow_dispatch:
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout Repo A
+        uses: actions/checkout@v2
+
+      - name: Set up Python
+        uses: actions/setup-python@v2
+        with:
+          python-version: '3.x'
+
+      - name: Navigate to convert utility
+        run: |
+          cd util/convert
+
+      - name: Install dependencies
+        run: |
+          pip install -r requirements.txt
+
+      - name: Convert notebooks to markdown
+        run: |
+          python convert.py
+
+      - name: Check current files
+        run: |
+          ls -la && cd output_md && ls -la && cd ../
+          
+      - name: Clear output files
+        run: |
+          rm -r output_md && ls
+
+#      - name: Checkout Repo B
+#        uses: actions/checkout@v2
+#        with:
+#          repository: your-username/repoB
+#          path: repoB
+#          token: ${{ secrets.GITHUB_TOKEN }}  # Use a personal access token if needed
+#
+#      - name: Copy markdown files to Repo B
+#        run: |
+#          cp -r markdown/* repoB/
+#
+#      - name: Commit and push changes to Repo B
+#        run: |
+#          cd repoB
+#          git config user.name "GitHub Action"
+#          git config user.email "actions@github.com"
+#          git add .
+#          git commit -m "Update markdown tutorials"
+#          git push origin main
