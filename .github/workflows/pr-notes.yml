@@ -1,0 +1,71 @@
+name: Check for Notebook Changes
+
+on:
+  pull_request:
+    types: [opened, synchronize]
+
+jobs:
+  check-notebooks:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v3
+        with:
+          fetch-depth: 0
+
+      - name: Check for changes in .ipynb files
+        id: notebook-check
+        run: |
+          changed_files=$(git diff --name-only ${{ github.event.pull_request.base.sha }} ${{ github.event.pull_request.head.sha }})
+          echo "Changed files: $changed_files"
+          if echo "$changed_files" | grep -q ".ipynb"; then
+            echo "Notebooks have been modified in this pull request."
+            echo "notebooks_changed=true" >> $GITHUB_ENV
+          else
+            echo "Notebooks have NOT been modified in this pull request."
+            echo "notebooks_changed=false" >> $GITHUB_ENV
+          fi
+
+      - name: Find existing notebook comment
+        id: find-comment
+        uses: peter-evans/find-comment@v3
+        with:
+          token: ${{ secrets.GITHUB_TOKEN }}
+          issue-number: ${{ github.event.pull_request.number }}
+          body-includes: "Notebooks have been modified in this pull request"
+
+      - name: Create PR Comment if notebooks were changed and no comment exists
+        if: env.notebooks_changed == 'true' && steps.find-comment.outputs.comment-id == ''
+        uses: peter-evans/create-or-update-comment@v3
+        with:
+          token: ${{ secrets.GITHUB_TOKEN }}
+          issue-number: ${{ github.event.pull_request.number }}
+          body: |
+            > [!CAUTION]
+            >  ## Notebooks have been modified in this pull request.
+            > - Please ensure that a `frontmatter.md` file is accompanying the notebook file, and that the frontmatter is up to date.
+            > - These changes *will be published* to the developer portal tutorials *only* if `frontmatter.md` is included.
+            > - Proofread all changes before merging, as changes to notebook content will change the developer tutorial.
+
+      - name: Update PR Comment if notebooks were changed
+        if: env.notebooks_changed == 'true' && steps.find-comment.outputs.comment-id != ''
+        uses: peter-evans/create-or-update-comment@v3
+        with:
+          token: ${{ secrets.GITHUB_TOKEN }}
+          comment-id: ${{ steps.find-comment.outputs.comment-id }}
+          body: |
+            > [!CAUTION]
+            >  ## Notebooks have been modified in this pull request.
+            > - Please ensure that a `frontmatter.md` file is accompanying the notebook file, and that the frontmatter is up to date.
+            > - These changes *will be published* to the developer portal tutorials *only* if `frontmatter.md` is included.
+            > - Proofread all changes before merging, as changes to notebook content will change the developer tutorial.
+          edit-mode: "replace"  # Ensure the comment body is fully replaced
+
+      - name: Delete PR Comment if no notebooks were changed and comment exists
+        if: env.notebooks_changed == 'false' && steps.find-comment.outputs.comment-id != ''
+        uses: peter-evans/create-or-update-comment@v3
+        with:
+          token: ${{ secrets.GITHUB_TOKEN }}
+          comment-id: ${{ steps.find-comment.outputs.comment-id }}
+          body: "(removed)"
+          edit-mode: "replace"
