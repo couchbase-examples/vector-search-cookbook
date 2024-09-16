@@ -1,11 +1,11 @@
-name: Check for Notebook Changes
+name: Detect Notebook Changes
 
 on:
   pull_request:
     types: [opened, synchronize]
 
 jobs:
-  check-notebooks:
+  detect-notebooks:
     runs-on: ubuntu-latest
     steps:
       - name: Checkout repository
@@ -13,7 +13,7 @@ jobs:
         with:
           fetch-depth: 0
 
-      - name: Check for changes in .ipynb files
+      - name: Detect changes in .ipynb files
         id: notebook-check
         run: |
           changed_files=$(git diff --name-only ${{ github.event.pull_request.base.sha }} ${{ github.event.pull_request.head.sha }})

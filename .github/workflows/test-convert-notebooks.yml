@@ -1,15 +1,14 @@
-name: Convert and Push Notebooks
+name: Test Frontmatter Notebooks
 
 on:
-  push:
+  pull_request:
     branches:
       - main
     paths:
       - '**/**.ipynb'
-  workflow_dispatch:
 
 jobs:
-  build:
+  test:
     runs-on: ubuntu-latest
 
     steps:
@@ -20,6 +19,10 @@ jobs:
         uses: actions/setup-python@v5
         with:
           python-version: '3.10'
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 18
 
       - name: Convert notebooks to markdown
         run: |
@@ -38,14 +41,11 @@ jobs:
         run: |
           rsync -av --checksum --include="*.md" --exclude="*" util/convert/output_md/ couchbase-tutorials/tutorial/markdown/generated/vector-search-cookbook
 
-      - name: Commit and push changes to couchbase-tutorials repo
+      - name: Test frontmatter for converted files
         working-directory: couchbase-tutorials
         run: |
-          git config user.name "GitHub Action"
-          git config user.email "actions@github.com"
-          git add .
-          git commit -m "Generated markdown tutorials from Jupyter Notebooks" -m "Generated from: ${{ github.repository }}" || echo "No changes to commit"
-          git push origin main
+          npm ci
+          npm run test:frontmatter
 
       - name: Clear output files
         run: |
