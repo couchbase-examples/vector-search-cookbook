@@ -1,0 +1,54 @@
+name: Convert and Push Notebooks
+
+on:
+  push:
+    paths:
+      - '**/**.ipynb'
+  pull_request:
+    branches:
+      - main
+  workflow_dispatch:
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.10'
+
+      - name: Convert notebooks to markdown
+        run: |
+          cd util/convert
+          pip install -r requirements.txt
+          python convert.py
+
+      - name: Checkout couchbase-tutorials
+        uses: actions/checkout@v4
+        with:
+          repository: ejscribner/test-recieve-md
+          token: ${{ secrets.GH_PAT }} # `GH_PAT` is a secret that contains your PAT
+          path: couchbase-tutorials
+
+      - name: Copy converted files
+        run: |
+          rsync -av --checksum --include="*.md" --exclude="*" util/convert/output_md/ couchbase-tutorials/markdown/
+
+      - name: Commit and push changes to couchbase-tutorials repo
+        working-directory: couchbase-tutorials
+        run: |
+          git config user.name "GitHub Action"
+          git config user.email "actions@github.com"
+          git add .
+          git commit -m "Generated markdown tutorials from Jupyter Notebooks" -m "Generated from: ${{ github.repository }}" || echo "No changes to commit"
+          git push origin main
+
+      - name: Clear output files
+        run: |
+          cd util/convert
+          rm -r output_md
