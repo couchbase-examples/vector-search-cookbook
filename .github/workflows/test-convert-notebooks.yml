@@ -1,4 +1,4 @@
-name: Test Frontmatter Notebooks
+name: Test Frontmatter
 
 on:
   pull_request:
