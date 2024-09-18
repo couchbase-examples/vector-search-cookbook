@@ -1,3 +1,7 @@
+# Automatically generates a comment on the PR if a notebook file is modified.
+# Warns author that changes will be published, and that frontmatter.md is required.
+# Checks if frontmatter.md exists in the same directory as the notebook file.
+# Creates, Updates, or Removes a comment based on the changes detected.
 name: Detect Notebook Changes
 
 on:
@@ -52,7 +56,6 @@ jobs:
           else
             echo "notebooks_changed=false" >> $GITHUB_OUTPUT
           fi
-      
 
       - name: Find existing notebook comment
         id: find-comment
