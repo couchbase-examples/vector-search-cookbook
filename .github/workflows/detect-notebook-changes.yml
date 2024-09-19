@@ -19,18 +19,24 @@ jobs:
         with:
           fetch-depth: 0
 
-      - name: Detect changes in .ipynb files and check for frontmatter.md
+      - name: Detect changes in .ipynb and frontmatter.md files
         id: notebook-check
         run: |
           # Get the list of changed files between the base and head commit
           changed_files=$(git diff --name-only ${{ github.event.pull_request.base.sha }} ${{ github.event.pull_request.head.sha }})
           echo "Changed files: $changed_files"
 
+          # Initialize variables for notebook and frontmatter changes
           notebooks_changed=false
+          frontmatter_changed=false
           notebook_count=$(echo "$changed_files" | grep -c '\.ipynb$' || true)
-          notebook_report="### $notebook_count Notebooks Modified:\n\n| Notebook File | Frontmatter |\n| ------------- | ------------------- |"
+          frontmatter_count=$(echo "$changed_files" | grep -c 'frontmatter\.md$' || true)
 
-          # Iterate through each changed file and check if it's a .ipynb file
+          # Report initialization
+          notebook_report="### $notebook_count Notebook Files Modified:\n\n| Notebook File | Frontmatter Included? |\n| ------------- | ------------------- |"
+          frontmatter_report="### $frontmatter_count Frontmatter Files Modified:\n\n| Frontmatter File |\n| ---------------- |"
+
+          # Check for changes in .ipynb files
           for file in $changed_files; do
             if [[ "$file" == *.ipynb ]]; then
               notebooks_changed=true
@@ -45,16 +51,28 @@ jobs:
             fi
           done
 
-          # Write the notebook report directly to GITHUB_OUTPUT
+          # Check for changes in frontmatter.md files
+          for file in $changed_files; do
+            if [[ "$file" == *frontmatter.md ]]; then
+              frontmatter_changed=true
+              frontmatter_report="$frontmatter_report\n| \`$file\` |"
+            fi
+          done
+
+          # Write the notebook and frontmatter report directly to GITHUB_OUTPUT
           echo -e "notebook_report<<EOF" >> $GITHUB_OUTPUT
           echo -e "$notebook_report" >> $GITHUB_OUTPUT
           echo -e "EOF" >> $GITHUB_OUTPUT
 
-          # Set the flag for whether notebooks were changed
-          if [[ "$notebooks_changed" == true ]]; then
-            echo "notebooks_changed=true" >> $GITHUB_OUTPUT
+          echo -e "frontmatter_report<<EOF" >> $GITHUB_OUTPUT
+          echo -e "$frontmatter_report" >> $GITHUB_OUTPUT
+          echo -e "EOF" >> $GITHUB_OUTPUT
+
+          # Set the flag for whether notebooks or frontmatter were changed
+          if [[ "$notebooks_changed" == true || "$frontmatter_changed" == true ]]; then
+            echo "changes_detected=true" >> $GITHUB_OUTPUT
           else
-            echo "notebooks_changed=false" >> $GITHUB_OUTPUT
+            echo "changes_detected=false" >> $GITHUB_OUTPUT
           fi
 
       - name: Find existing notebook comment
@@ -65,44 +83,48 @@ jobs:
           issue-number: ${{ github.event.pull_request.number }}
           body-includes: "Notebook"
 
-      - name: Create PR Comment if notebooks were changed and no comment exists
-        if: steps.notebook-check.outputs.notebooks_changed == 'true' && steps.find-comment.outputs.comment-id == ''
+      - name: Create PR Comment if changes were detected and no comment exists
+        if: steps.notebook-check.outputs.changes_detected == 'true' && steps.find-comment.outputs.comment-id == ''
         uses: peter-evans/create-or-update-comment@v3
         with:
           token: ${{ secrets.GITHUB_TOKEN }}
           issue-number: ${{ github.event.pull_request.number }}
           body: |
             > [!CAUTION]
-            >  ## Notebooks have been modified in this pull request.
+            >  ## Notebooks or Frontmatter Files Have Been Modified
             > - Please ensure that a `frontmatter.md` file is accompanying the notebook file, and that the frontmatter is up to date.
             > - These changes **will be published** to the developer portal tutorials **only** if `frontmatter.md` is included.
-            > - Proofread all changes before merging, as changes to notebook content will change the developer tutorial.
+            > - Proofread all changes before merging, as changes to notebook and frontmatter content will update the developer tutorial.
 
             ${{ steps.notebook-check.outputs.notebook_report }}
+
+            ${{ steps.notebook-check.outputs.frontmatter_report }}
             *Note: frontmatter will be checked and tested in the **Test Frontmatter** workflow.*
 
-      - name: Update PR Comment if notebooks were changed
-        if: steps.notebook-check.outputs.notebooks_changed == 'true' && steps.find-comment.outputs.comment-id != ''
+      - name: Update PR Comment if changes were detected
+        if: steps.notebook-check.outputs.changes_detected == 'true' && steps.find-comment.outputs.comment-id != ''
         uses: peter-evans/create-or-update-comment@v3
         with:
           token: ${{ secrets.GITHUB_TOKEN }}
           comment-id: ${{ steps.find-comment.outputs.comment-id }}
           body: |
             > [!CAUTION]
-            >  ## Notebooks have been modified in this pull request.
+            >  ## Notebooks or Frontmatter Files Have Been Modified
             > - Please ensure that a `frontmatter.md` file is accompanying the notebook file, and that the frontmatter is up to date.
             > - These changes **will be published** to the developer portal tutorials **only** if `frontmatter.md` is included.
-            > - Proofread all changes before merging, as changes to notebook content will change the developer tutorial.
+            > - Proofread all changes before merging, as changes to notebook and frontmatter content will update the developer tutorial.
 
             ${{ steps.notebook-check.outputs.notebook_report }}
+
+            ${{ steps.notebook-check.outputs.frontmatter_report }}
             *Note: frontmatter will be checked and tested in the **Test Frontmatter** workflow.*
           edit-mode: "replace"  # Ensure the comment body is fully replaced
 
-      - name: Delete PR Comment if no notebooks were changed and comment exists
-        if: steps.notebook-check.outputs.notebooks_changed == 'false' && steps.find-comment.outputs.comment-id != ''
+      - name: Delete PR Comment if no changes were detected and comment exists
+        if: steps.notebook-check.outputs.changes_detected == 'false' && steps.find-comment.outputs.comment-id != ''
         uses: peter-evans/create-or-update-comment@v3
         with:
           token: ${{ secrets.GITHUB_TOKEN }}
           comment-id: ${{ steps.find-comment.outputs.comment-id }}
-          body: "Notebook changes no longer detected."
+          body: "Notebook or frontmatter changes no longer detected."
           edit-mode: "replace"  # Ensure the comment body is fully replaced
