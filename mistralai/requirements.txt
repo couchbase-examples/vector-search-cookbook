@@ -1,0 +1,2 @@
+couchbase==4.3.0
+mistralai==1.0.1
