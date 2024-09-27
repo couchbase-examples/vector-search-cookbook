@@ -1,0 +1,80 @@
+{
+ "name": "vector_test",
+ "type": "fulltext-index",
+ "params": {
+  "mapping": {
+   "types": {
+    "_default.huggingface": {
+     "enabled": true,
+     "dynamic": true,
+     "properties": {
+      "vector": {
+       "enabled": true,
+       "dynamic": false,
+       "fields": [
+        {
+         "name": "vector",
+         "type": "vector",
+         "store": false,
+         "index": true,
+         "include_term_vectors": false,
+         "include_in_all": false,
+         "docvalues": false,
+         "dims": 768,
+         "similarity": "l2_norm",
+         "vector_index_optimized_for": "recall"
+        }
+       ]
+      },
+      "text": {
+       "enabled": true,
+       "dynamic": false,
+       "fields": [
+        {
+         "name": "text",
+         "type": "text",
+         "store": false,
+         "index": true,
+         "include_term_vectors": false,
+         "include_in_all": false,
+         "docvalues": false
+        }
+       ]
+      }
+     }
+    }
+   },
+   "default_mapping": {
+    "enabled": false,
+    "dynamic": true
+   },
+   "default_type": "_default",
+   "default_analyzer": "standard",
+   "default_datetime_parser": "dateTimeOptional",
+   "default_field": "_all",
+   "store_dynamic": false,
+   "index_dynamic": true,
+   "docvalues_dynamic": false
+  },
+  "store": {
+   "indexType": "scorch",
+   "kvStoreName": ""
+  },
+  "doc_config": {
+   "docid_prefix_delim": "",
+   "docid_regexp": "",
+   "mode": "scope.collection.type_field",
+   "type_field": "type"
+  }
+ },
+ "sourceType": "couchbase",
+ "sourceName": "huggingface",
+ "sourceUUID": "2c2e8a2d88811b8818fac622a62aba03",
+ "sourceParams": {},
+ "planParams": {
+  "maxPartitionsPerPIndex": 1024,
+  "numReplicas": 0,
+  "indexPartitions": 1
+ },
+ "uuid": ""
+}
