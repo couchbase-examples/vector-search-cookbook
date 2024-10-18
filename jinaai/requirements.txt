@@ -1,7 +1,0 @@
-datasets==2.14.7
-langchain-couchbase==0.1.1
-langchain-community==0.2.12
-python-dotenv==1.0.1
-openai==0.27
-
-
