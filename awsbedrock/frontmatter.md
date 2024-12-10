@@ -14,7 +14,7 @@ technology:
 tags:
   - Artificial Intelligence
   - LangChain
-  - AWS
+  - Amazon Bedrock
 sdk_language:
   - python
 length: 60 Mins
