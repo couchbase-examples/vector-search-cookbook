@@ -14,7 +14,6 @@ technology:
 tags:
   - Artificial Intelligence
   - LangChain
-  - Capella
 sdk_language:
   - python
 length: 60 Mins
