@@ -2,18 +2,14 @@ import os
 import logging
 from typing import Any, Dict, List, Optional
 from crewai.memory.storage.rag_storage import RAGStorage
+from crewai import Agent, Crew, Task, Process
 from couchbase.cluster import Cluster
 from couchbase.options import ClusterOptions
 from couchbase.auth import PasswordAuthenticator
 from couchbase.management.search import SearchIndex
-from couchbase.exceptions import (
-    CouchbaseException,
-    DocumentNotFoundException,
-    QueryIndexNotFoundException,
-    TimeoutException
-)
+from couchbase.exceptions import CouchbaseException
 from langchain_couchbase.vectorstores import CouchbaseVectorStore
-from langchain_openai import OpenAIEmbeddings
+from langchain_openai import OpenAIEmbeddings, ChatOpenAI
 from dotenv import load_dotenv
 
 # Configure logging
@@ -23,6 +19,11 @@ logging.basicConfig(
     datefmt='%Y-%m-%d %H:%M:%S'
 )
 logger = logging.getLogger(__name__)
+
+# Disable all logging except our own
+for name in logging.root.manager.loggerDict:
+    if name != __name__:
+        logging.getLogger(name).setLevel(logging.WARNING)
 
 class CouchbaseStorage(RAGStorage):
     """
@@ -60,41 +61,26 @@ class CouchbaseStorage(RAGStorage):
                 "context": doc.page_content,
                 "score": score
             } for i, (doc, score) in enumerate(results)]
-        except TimeoutException as e:
-            logger.error(f"Search operation timed out: {str(e)}")
-            raise
-        except CouchbaseException as e:
-            logger.error(f"Couchbase error during search: {str(e)}")
-            raise
         except Exception as e:
-            logger.error(f"Unexpected error during search: {str(e)}")
+            logger.error(f"Search failed: {str(e)}")
             raise
 
     def reset(self) -> None:
         """Reset the memory storage."""
         if self.allow_reset:
             try:
-                # Delete all documents in the collection using N1QL
+                # Create primary index if it doesn't exist
+                self.cluster.query(
+                    f"CREATE PRIMARY INDEX IF NOT EXISTS ON `{self.bucket_name}`.`{self.scope_name}`.`{self.collection_name}`"
+                ).execute()
+                
+                # Delete all documents
                 self.cluster.query(
                     f"DELETE FROM `{self.bucket_name}`.`{self.scope_name}`.`{self.collection_name}`"
                 ).execute()
                 logger.info(f"Successfully reset collection: {self.collection_name}")
-            except QueryIndexNotFoundException:
-                logger.error("Primary index not found. Attempting to create...")
-                try:
-                    self.cluster.query(
-                        f"CREATE PRIMARY INDEX ON `{self.bucket_name}`.`{self.scope_name}`.`{self.collection_name}`"
-                    ).execute()
-                    # Retry delete after creating index
-                    self.cluster.query(
-                        f"DELETE FROM `{self.bucket_name}`.`{self.scope_name}`.`{self.collection_name}`"
-                    ).execute()
-                    logger.info("Primary index created and collection reset successfully")
-                except Exception as e:
-                    logger.error(f"Failed to create primary index: {str(e)}")
-                    raise
             except Exception as e:
-                logger.error(f"Failed to reset collection: {str(e)}")
+                logger.error(f"Reset failed: {str(e)}")
                 raise
 
     def _initialize_app(self):
@@ -109,7 +95,6 @@ class CouchbaseStorage(RAGStorage):
                 openai_api_key=os.getenv('OPENAI_API_KEY'),
                 model="text-embedding-ada-002"
             )
-            logger.info("OpenAI embeddings initialized")
 
             # Connect to Couchbase
             auth = PasswordAuthenticator(
@@ -120,7 +105,6 @@ class CouchbaseStorage(RAGStorage):
                 os.getenv('CB_HOST', 'couchbase://localhost'),
                 ClusterOptions(auth)
             )
-            logger.info("Connected to Couchbase cluster")
             
             # Set up bucket, scope, and collection names
             self.bucket_name = os.getenv('CB_BUCKET_NAME', 'vector-search-testing')
@@ -129,13 +113,9 @@ class CouchbaseStorage(RAGStorage):
             self.index_name = os.getenv('INDEX_NAME', 'vector_search_crew')
 
             # Create primary index if it doesn't exist
-            try:
-                self.cluster.query(
-                    f"CREATE PRIMARY INDEX IF NOT EXISTS ON `{self.bucket_name}`.`{self.scope_name}`.`{self.collection_name}`"
-                ).execute()
-                logger.info(f"Primary index ensured for collection: {self.collection_name}")
-            except Exception as e:
-                logger.warning(f"Could not create primary index: {str(e)}")
+            self.cluster.query(
+                f"CREATE PRIMARY INDEX IF NOT EXISTS ON `{self.bucket_name}`.`{self.scope_name}`.`{self.collection_name}`"
+            ).execute()
 
             # Initialize vector store
             self.vector_store = CouchbaseVectorStore(
@@ -146,16 +126,10 @@ class CouchbaseStorage(RAGStorage):
                 embedding=self.embeddings,
                 index_name=self.index_name,
             )
-            logger.info("Vector store initialized successfully")
+            logger.info("Storage initialized successfully")
 
-        except ValueError as e:
-            logger.error(f"Configuration error: {str(e)}")
-            raise
-        except CouchbaseException as e:
-            logger.error(f"Couchbase error during initialization: {str(e)}")
-            raise
         except Exception as e:
-            logger.error(f"Unexpected error during initialization: {str(e)}")
+            logger.error(f"Initialization failed: {str(e)}")
             raise
 
     def save(self, value: Any, metadata: Dict[str, Any]) -> None:
@@ -168,14 +142,8 @@ class CouchbaseStorage(RAGStorage):
                 ids=[f"{self.type}_{metadata.get('id', len(self.search('', limit=1)) + 1)}"]
             )
             logger.info(f"Successfully saved entry with metadata: {metadata}")
-        except TimeoutException as e:
-            logger.error(f"Save operation timed out: {str(e)}")
-            raise
-        except CouchbaseException as e:
-            logger.error(f"Couchbase error during save: {str(e)}")
-            raise
         except Exception as e:
-            logger.error(f"Unexpected error during save: {str(e)}")
+            logger.error(f"Save failed: {str(e)}")
             raise
 
 def main():
@@ -198,46 +166,90 @@ def main():
         # Test saving entries
         logger.info("\nSaving test entries...")
         test_entries = [
-            ("This is a test document about AI", {"category": "technology"}),
-            ("Couchbase provides excellent vector search capabilities", {"category": "database"}),
-            ("Vector embeddings help with semantic search", {"category": "search"})
+            ("Vector search uses mathematical vectors to find similar items by converting data into high-dimensional vector space", 
+             {"category": "technology", "type": "concept"}),
+            ("Couchbase vector search enables semantic similarity matching by storing and comparing vector embeddings", 
+             {"category": "database", "type": "implementation"}),
+            ("Vector embeddings represent text, images, and other data as numerical vectors for efficient similarity search", 
+             {"category": "search", "type": "technique"})
         ]
         
         for text, metadata in test_entries:
-            try:
-                storage.save(text, metadata)
-                logger.info(f"Saved entry with metadata: {metadata}")
-            except Exception as e:
-                logger.error(f"Failed to save entry: {str(e)}")
-                raise
+            storage.save(text, metadata)
+            logger.info(f"Saved entry with metadata: {metadata}")
         
         # Test searching
         logger.info("\nTesting search functionality...")
         query = "Tell me about vector search"
-        try:
-            results = storage.search(query, limit=2)
-            
-            logger.info(f"\nSearch results for query: '{query}'")
-            print("-"*80)
-            for result in results:
-                print("\nResult:")
-                print(f"Context: {result['context']}")
-                print(f"Metadata: {result['metadata']}")
-                print(f"Score: {result['score']}")
-                print("-"*80)
-        except Exception as e:
-            logger.error(f"Search operation failed: {str(e)}")
-            raise
+        results = storage.search(query, limit=2)
         
-        # Test reset
-        if input("\nWould you like to reset the storage? (y/n): ").lower() == 'y':
-            try:
-                logger.info("Resetting storage...")
-                storage.reset()
-                logger.info("Storage reset complete")
-            except Exception as e:
-                logger.error(f"Reset operation failed: {str(e)}")
-                raise
+        logger.info(f"\nSearch results for query: '{query}'")
+        print("-"*80)
+        for result in results:
+            print("\nResult:")
+            print(f"Context: {result['context']}")
+            print(f"Metadata: {result['metadata']}")
+            print(f"Score: {result['score']}")
+            print("-"*80)
+        
+        # Test CrewAI integration
+        logger.info("\nTesting CrewAI integration...")
+        
+        # Initialize language model
+        llm = ChatOpenAI(
+            openai_api_key=os.getenv('OPENAI_API_KEY'),
+            model="gpt-4",
+            temperature=0.7
+        )
+        
+        # Create agents
+        researcher = Agent(
+            role='Research Expert',
+            goal='Find relevant information',
+            backstory='Expert at finding and analyzing information',
+            llm=llm,
+            memory=True,
+            memory_storage=storage
+        )
+        
+        writer = Agent(
+            role='Technical Writer',
+            goal='Create clear documentation',
+            backstory='Expert at technical writing and documentation',
+            llm=llm,
+            memory=True,
+            memory_storage=storage
+        )
+        
+        # Create tasks
+        research_task = Task(
+            description='Research vector search capabilities',
+            agent=researcher,
+            expected_output="Detailed findings about vector search technology and implementations"
+        )
+        
+        writing_task = Task(
+            description='Document the findings',
+            agent=writer,
+            expected_output="Clear and comprehensive documentation of the research findings",
+            context=[research_task]
+        )
+        
+        # Create and run crew
+        crew = Crew(
+            agents=[researcher, writer],
+            tasks=[research_task, writing_task],
+            process=Process.sequential,
+            verbose=False
+        )
+        
+        logger.info("Starting crew tasks...")
+        result = crew.kickoff()
+        logger.info("Crew tasks completed")
+        print("\nCrew Result:")
+        print("-"*80)
+        print(result)
+        print("-"*80)
         
     except Exception as e:
         logger.error(f"Demo failed: {str(e)}")
