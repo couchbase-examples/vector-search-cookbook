@@ -1,0 +1,62 @@
+{
+    "type": "fulltext-index",
+    "name": "vector-search-testing.shared.vector_search_pydantic_ai",
+    "uuid": "73aeca4a89073bdf",
+    "sourceType": "gocbcore",
+    "sourceName": "vector-search-testing",
+    "sourceUUID": "2e4ef2772126d6a41904bf68f3e4f9dc",
+    "planParams": {
+      "maxPartitionsPerPIndex": 1024,
+      "indexPartitions": 1
+    },
+    "params": {
+      "doc_config": {
+        "docid_prefix_delim": "",
+        "docid_regexp": "",
+        "mode": "scope.collection.type_field",
+        "type_field": "type"
+      },
+      "mapping": {
+        "analysis": {},
+        "default_analyzer": "standard",
+        "default_datetime_parser": "dateTimeOptional",
+        "default_field": "_all",
+        "default_mapping": {
+          "dynamic": false,
+          "enabled": false
+        },
+        "default_type": "_default",
+        "docvalues_dynamic": false,
+        "index_dynamic": true,
+        "store_dynamic": true,
+        "type_field": "_type",
+        "types": {
+          "shared.pydantic_ai": {
+            "dynamic": true,
+            "enabled": true,
+            "properties": {
+              "embedding": {
+                "dynamic": false,
+                "enabled": true,
+                "fields": [
+                  {
+                    "dims": 1536,
+                    "similarity": "dot_product",
+                    "index": true,
+                    "name": "embedding",
+                    "type": "vector",
+                    "vector_index_optimized_for": "recall"
+                  }
+                ]
+              }
+            }
+          }
+        }
+      },
+      "store": {
+        "indexType": "scorch",
+        "segmentVersion": 15
+      }
+    },
+    "sourceParams": {}
+}
