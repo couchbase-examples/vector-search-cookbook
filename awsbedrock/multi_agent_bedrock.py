@@ -603,36 +603,18 @@ def main():
             # )
             # print("\nWriter Agent Response:", writer_response)
             
-            # Try to format using Nova Pro model directly
+            # Try to format using Claude model directly
             response = bedrock_runtime.invoke_model(
-                modelId="amazon.nova-pro-v1:0",
-                body=json.dumps(
-                   {
-  "messages": [
-    {
-      "role": "user",
-      "content": [
-        {
-          "type": "text",
-          "toolUse": {
-            "parameters": {
-              "video_url": "https://example.com/video.mp4"
-            }
-          }
-        }
-      ]
-    }
-  ]
-}
-
-
-
-    
-                            
-).encode('utf-8')
+                modelId="anthropic.claude-v2",
+                body=json.dumps({
+                    "prompt": f"\n\nHuman: Format this research finding in a user-friendly way:\n{researcher_response}\n\nAssistant:",
+                    "max_tokens_to_sample": 1000,
+                    "temperature": 0.7,
+                    "anthropic_version": "bedrock-2023-05-31"
+                }).encode('utf-8')
             )
             response_body = json.loads(response['body'].read().decode())
-            writer_response = response_body['messages'][-1]['content']
+            writer_response = response_body['completion']
             print("\nFormatted Response:", writer_response)
             
         except Exception as e:
