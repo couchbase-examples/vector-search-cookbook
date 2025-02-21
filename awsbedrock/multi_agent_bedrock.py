@@ -164,12 +164,33 @@ def create_agent_role(agent_name, model_id):
         except iam_client.exceptions.EntityAlreadyExistsException:
             policy = iam_client.get_policy(PolicyArn=f"arn:aws:iam::{AWS_ACCOUNT_ID}:policy/{policy_name}")
             
-            # Update the policy if it exists
-            policy_version = iam_client.create_policy_version(
-                PolicyArn=policy['Policy']['Arn'],
-                PolicyDocument=json.dumps(policy_doc),
-                SetAsDefault=True
-            )
+            # List and delete old versions if limit reached
+            versions = iam_client.list_policy_versions(
+                PolicyArn=policy['Policy']['Arn']
+            )['Versions']
+            
+            if len(versions) >= 5:
+                # Delete oldest non-default versions
+                for version in versions:
+                    if not version['IsDefaultVersion']:
+                        iam_client.delete_policy_version(
+                            PolicyArn=policy['Policy']['Arn'],
+                            VersionId=version['VersionId']
+                        )
+                        
+                logging.info(f"Deleted {len(versions)} old policy versions")
+            
+            # Update the policy with new version
+            try:
+                policy_version = iam_client.create_policy_version(
+                    PolicyArn=policy['Policy']['Arn'],
+                    PolicyDocument=json.dumps(policy_doc),
+                    SetAsDefault=True
+                )
+            except Exception as e:
+                logging.error(f"Error updating policy version: {str(e)}")
+                # Try to use existing policy without updating
+                pass
         
         # Create role or get existing one
         try:
@@ -218,7 +239,7 @@ def wait_for_agent_status(agent_id, target_statuses=['Available', 'PREPARED', 'N
     
     return current_status
 
-def create_agent(name, instructions, functions, model_id="anthropic.claude-3-haiku-20240307-v1:0"):
+def create_agent(name, instructions, functions, model_id="amazon.nova-pro-v1:0"):
     """Create a Bedrock agent with ROC action groups"""
     try:
         # Create agent role
@@ -364,6 +385,7 @@ def search_documents(query, k=4):
     return vector_store.similarity_search(query, k=k)
 
 def main():
+    
     try:
         # Connect to Couchbase
         auth = PasswordAuthenticator(CB_USERNAME, CB_PASSWORD)
@@ -475,10 +497,27 @@ def main():
             "requireConfirmation": "DISABLED"
         }]
 
-        # Create agents
-        embedder_id, embedder_alias = create_agent("embedder", embedder_instructions, embedder_functions)
-        researcher_id, researcher_alias = create_agent("researcher", researcher_instructions, researcher_functions)
-        writer_id, writer_alias = create_agent("writer", writer_instructions, writer_functions)
+        # Create agents with error handling
+        try:
+            embedder_id, embedder_alias = create_agent("embedder", embedder_instructions, embedder_functions)
+        except Exception as e:
+            logging.error(f"Failed to create embedder agent: {str(e)}")
+            embedder_id, embedder_alias = None, None
+
+        try:
+            researcher_id, researcher_alias = create_agent("researcher", researcher_instructions, researcher_functions)
+        except Exception as e:
+            logging.error(f"Failed to create researcher agent: {str(e)}")
+            researcher_id, researcher_alias = None, None
+
+        try:
+            writer_id, writer_alias = create_agent("writer", writer_instructions, writer_functions)
+        except Exception as e:
+            logging.error(f"Failed to create writer agent: {str(e)}")
+            writer_id, writer_alias = None, None
+
+        if not any([embedder_id, researcher_id, writer_id]):
+            raise RuntimeError("Failed to create any agents")
 
         # Load documents from JSON file
         try:
@@ -542,21 +581,59 @@ def main():
 
         # Example usage
         try:
-            # Search for information using the researcher agent
-            researcher_response = invoke_agent(
-                researcher_id,
-                researcher_alias,
-                'What is unique about the Cline AI assistant?'
-            )
-            print("Researcher Agent Response:", researcher_response)
+            # # Search for information using the researcher agent
+            # researcher_response = invoke_agent(
+            #     researcher_id,
+            #     researcher_alias,
+            #     'What is unique about the Cline AI assistant?'
+            # )
+            # print("Researcher Agent Response:", researcher_response)
 
-            # Format the findings using the writer agent
-            writer_response = invoke_agent(
-                writer_id,
-                writer_alias,
-                f'Format this research finding in a user-friendly way: {researcher_response}'
+            # Search for information using vector store directly
+            results = search_documents('What is unique about the Cline AI assistant?', k=3)
+            researcher_response = "\n".join([doc.page_content for doc in results])
+            print("Search Results:", researcher_response)
+
+
+            #  # Format the findings using the writer agent
+            # writer_response = invoke_agent(
+            #     writer_id,
+            #     writer_alias,
+            #     f'Format this research finding in a user-friendly way: {researcher_response}'
+            # )
+            # print("\nWriter Agent Response:", writer_response)
+            
+            # Try to format using Nova Pro model directly
+            response = bedrock_runtime.invoke_model(
+                modelId="amazon.nova-pro-v1:0",
+                body=json.dumps(
+                   {
+  "messages": [
+    {
+      "role": "user",
+      "content": [
+        {
+          "type": "text",
+          "toolUse": {
+            "parameters": {
+              "video_url": "https://example.com/video.mp4"
+            }
+          }
+        }
+      ]
+    }
+  ]
+}
+
+
+
+    
+                            
+).encode('utf-8')
             )
-            print("\nWriter Agent Response:", writer_response)
+            response_body = json.loads(response['body'].read().decode())
+            writer_response = response_body['messages'][-1]['content']
+            print("\nFormatted Response:", writer_response)
             
         except Exception as e:
             print(f"Error: {str(e)}")
