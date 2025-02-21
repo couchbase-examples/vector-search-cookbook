@@ -1,23 +1,17 @@
-import os
 import json
 import logging
+import os
 import time
 import uuid
 from datetime import timedelta
-from dotenv import load_dotenv
 
 import boto3
 from couchbase.auth import PasswordAuthenticator
 from couchbase.cluster import Cluster
-from couchbase.exceptions import (
-    CouchbaseException,
-    InternalServerFailureException,
-    QueryIndexAlreadyExistsException,
-    ServiceUnavailableException
-)
 from couchbase.management.buckets import CreateBucketSettings
 from couchbase.management.search import SearchIndex
 from couchbase.options import ClusterOptions
+from dotenv import load_dotenv
 from langchain_aws import BedrockEmbeddings
 from langchain_couchbase.vectorstores import CouchbaseVectorStore
 
@@ -42,34 +36,19 @@ AWS_ACCESS_KEY_ID = os.getenv("AWS_ACCESS_KEY_ID")
 AWS_SECRET_ACCESS_KEY = os.getenv("AWS_SECRET_ACCESS_KEY")
 AWS_ACCOUNT_ID = os.getenv("AWS_ACCOUNT_ID")
 
-# Initialize AWS clients
-bedrock_agent_client = boto3.client(
-    'bedrock-agent',
-    region_name=AWS_REGION,
+# Initialize AWS session
+session = boto3.Session(
     aws_access_key_id=AWS_ACCESS_KEY_ID,
-    aws_secret_access_key=AWS_SECRET_ACCESS_KEY
+    aws_secret_access_key=AWS_SECRET_ACCESS_KEY,
+    region_name=AWS_REGION
 )
 
-bedrock_client = boto3.client(
-    'bedrock',
-    region_name=AWS_REGION,
-    aws_access_key_id=AWS_ACCESS_KEY_ID,
-    aws_secret_access_key=AWS_SECRET_ACCESS_KEY
-)
-
-bedrock_runtime_client = boto3.client(
-    'bedrock-agent-runtime',
-    region_name=AWS_REGION,
-    aws_access_key_id=AWS_ACCESS_KEY_ID,
-    aws_secret_access_key=AWS_SECRET_ACCESS_KEY
-)
-
-iam_client = boto3.client(
-    'iam',
-    region_name=AWS_REGION,
-    aws_access_key_id=AWS_ACCESS_KEY_ID,
-    aws_secret_access_key=AWS_SECRET_ACCESS_KEY
-)
+# Initialize AWS clients from session
+iam_client = session.client('iam')
+bedrock_client = session.client('bedrock')
+bedrock_agent_client = session.client('bedrock-agent')
+bedrock_runtime = session.client('bedrock-runtime')
+bedrock_runtime_client = session.client('bedrock-agent-runtime')
 
 def setup_collection(cluster, bucket_name, scope_name, collection_name):
     """Set up Couchbase collection for vector storage"""
@@ -144,11 +123,13 @@ def create_agent_role(agent_name, model_id):
                 "Sid": "BedrockPermissions",
                 "Effect": "Allow",
                 "Action": [
-                "bedrock:InvokeModel",
-                "bedrock-agent:*",
-                "bedrock-agent-runtime:InvokeAgent",
-                "bedrock-runtime:InvokeModel"
-            ],
+                    "bedrock:InvokeModel",
+                    "bedrock:*",
+                    "bedrock-agent:*",
+                    "bedrock-agent-runtime:*",
+                    "bedrock-runtime:*",
+                    "iam:*"
+                ],
                 "Resource": "*"
             }
         ]
@@ -158,7 +139,17 @@ def create_agent_role(agent_name, model_id):
         "Version": "2012-10-17",
         "Statement": [{
             "Effect": "Allow",
-            "Principal": {"Service": "bedrock.amazonaws.com"},
+            "Principal": {
+                "Service": [
+                    "bedrock.amazonaws.com",
+                    "bedrock-runtime.amazonaws.com",
+                    "bedrock-agent-runtime.amazonaws.com"
+                ],
+                "AWS": [
+                    f"arn:aws:iam::{AWS_ACCOUNT_ID}:root",
+                    f"arn:aws:iam::{AWS_ACCOUNT_ID}:user/{os.getenv('AWS_USER', 'default')}"
+                ]
+            },
             "Action": "sts:AssumeRole"
         }]
     }
@@ -227,7 +218,7 @@ def wait_for_agent_status(agent_id, target_statuses=['Available', 'PREPARED', 'N
     
     return current_status
 
-def create_agent(name, instructions, functions, model_id="anthropic.claude-3-sonnet-20240229-v1:0"):
+def create_agent(name, instructions, functions, model_id="anthropic.claude-3-haiku-20240307-v1:0"):
     """Create a Bedrock agent with ROC action groups"""
     try:
         # Create agent role
@@ -385,9 +376,9 @@ def main():
         collection = setup_collection(cluster, CB_BUCKET_NAME, SCOPE_NAME, COLLECTION_NAME)
         logging.info("Collections setup complete")
         
-        # Initialize Bedrock embeddings
+        # Initialize Bedrock runtime client for embeddings
         embeddings = BedrockEmbeddings(
-            client=bedrock_client,
+            client=bedrock_runtime,
             model_id="amazon.titan-embed-text-v2:0"
         )
         logging.info("Successfully created Bedrock embeddings client")
@@ -491,7 +482,7 @@ def main():
 
         # Load documents from JSON file
         try:
-            with open('documents.json', 'r') as f:
+            with open('awsbedrock/documents.json', 'r') as f:
                 data = json.load(f)
                 documents = data.get('documents', [])
                 
@@ -506,21 +497,31 @@ def main():
                 try:
                     logging.info(f"Processing document {i}/{len(documents)}")
                     
-                    response = bedrock_runtime_client.invoke_agent(
-                        agentId=embedder_id,
-                        agentAliasId=embedder_alias,
-                        sessionId=str(uuid.uuid4()),
-                        inputText=f'Add this document: {json.dumps(doc)}'
-                    )
+                    # Extract text content and metadata from document
+                    text = doc.get('text', '')
+                    metadata = {k: v for k, v in doc.items() if k != 'text'}
                     
-                    # Process streaming response
-                    result = ""
-                    for event in response['completion']:
-                        if 'chunk' in event:
-                            chunk = event['chunk']['bytes'].decode('utf-8')
-                            result += chunk
+                    # Add document to vector store
+                    doc_id = add_document(text, json.dumps(metadata))
+                    logging.info(f"Added document {i} with ID: {doc_id}")
                     
-                    logging.info(f"Added document {i}: {result}")
+                          
+
+                    # response = bedrock_runtime_client.invoke_agent(
+                    #     agentId=embedder_id,
+                    #     agentAliasId=embedder_alias,
+                    #     sessionId=str(uuid.uuid4()),
+                    #     inputText=f'Add this document: {json.dumps(doc)}'
+                    # )
+                    
+                    # # Process streaming response
+                    # result = ""
+                    # for event in response['completion']:
+                    #     if 'chunk' in event:
+                    #         chunk = event['chunk']['bytes'].decode('utf-8')
+                    #         result += chunk
+                    
+                    # logging.info(f"Added document {i}: {result}")
                     successful_docs += 1
                     
                     # Add small delay between requests
