@@ -1,43 +1,33 @@
+from typing import Any, Dict, List, Optional
 import os
 import logging
-from typing import Any, Dict, List, Optional
+from datetime import timedelta
+from dotenv import load_dotenv
 from crewai.memory.storage.rag_storage import RAGStorage
+from crewai.memory.short_term.short_term_memory import ShortTermMemory
 from crewai import Agent, Crew, Task, Process
 from couchbase.cluster import Cluster
 from couchbase.options import ClusterOptions
 from couchbase.auth import PasswordAuthenticator
-from couchbase.management.search import SearchIndex
-from couchbase.exceptions import CouchbaseException
+from couchbase.diagnostics import PingState, ServiceType
 from langchain_couchbase.vectorstores import CouchbaseVectorStore
 from langchain_openai import OpenAIEmbeddings, ChatOpenAI
-from dotenv import load_dotenv
+import time
+import json
 
 # Configure logging
-logging.basicConfig(
-    level=logging.INFO,
-    format='%(asctime)s [%(levelname)s] %(message)s',
-    datefmt='%Y-%m-%d %H:%M:%S'
-)
+logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger(__name__)
-
-# Disable all logging except our own
-for name in logging.root.manager.loggerDict:
-    if name != __name__:
-        logging.getLogger(name).setLevel(logging.WARNING)
 
 class CouchbaseStorage(RAGStorage):
     """
-    Extends Storage to handle embeddings for memory entries using Couchbase.
+    Extends RAGStorage to handle embeddings for memory entries using Couchbase.
     """
 
-    def __init__(self, type, allow_reset=True, embedder_config=None, crew=None):
-        try:
-            super().__init__(type, allow_reset, embedder_config, crew)
-            self._initialize_app()
-            logger.info(f"CouchbaseStorage initialized for type: {type}")
-        except Exception as e:
-            logger.error(f"Failed to initialize CouchbaseStorage: {str(e)}")
-            raise
+    def __init__(self, type: str, allow_reset: bool = True, embedder_config: Optional[Dict[str, Any]] = None, crew: Optional[Any] = None):
+        """Initialize CouchbaseStorage with configuration."""
+        super().__init__(type, allow_reset, embedder_config, crew)
+        self._initialize_app()
 
     def search(
         self,
@@ -45,77 +35,141 @@ class CouchbaseStorage(RAGStorage):
         limit: int = 3,
         filter: Optional[dict] = None,
         score_threshold: float = 0,
-    ) -> List[Any]:
-        """Search memory entries using vector similarity."""
+    ) -> List[Dict[str, Any]]:
+        """
+        Search memory entries using vector similarity.
+        """
         try:
+            # Add type filter
+            search_filter = {"type": self.type}
+            if filter:
+                search_filter.update(filter)
+
+            # Execute search
             results = self.vector_store.similarity_search_with_score(
                 query,
                 k=limit,
-                filter=filter,
-                score_threshold=score_threshold
+                filter=search_filter
             )
             
-            return [{
-                "id": str(i),
-                "metadata": doc.metadata,
-                "context": doc.page_content,
-                "score": score
-            } for i, (doc, score) in enumerate(results)]
+            # Format results
+            formatted_results = []
+            for i, (doc, score) in enumerate(results):
+                if score >= score_threshold:
+                    formatted_results.append({
+                        "id": doc.metadata.get("id", str(i)),
+                        "metadata": doc.metadata,
+                        "context": doc.page_content,
+                        "score": float(score)
+                    })
+            
+            logger.info(f"Found {len(formatted_results)} results for query: {query}")
+            return formatted_results
+
         except Exception as e:
             logger.error(f"Search failed: {str(e)}")
+            return []
+
+    def save(self, value: Any, metadata: Dict[str, Any]) -> None:
+        """
+        Save a memory entry with metadata.
+        """
+        try:
+            # Generate unique ID
+            timestamp = int(time.time() * 1000)
+            doc_id = f"{self.type}_{timestamp}"
+            
+            # Prepare metadata
+            if not metadata:
+                metadata = {}
+            metadata.update({
+                "id": doc_id,
+                "type": self.type,
+                "timestamp": timestamp
+            })
+
+            # Convert value to string if needed
+            if isinstance(value, (dict, list)):
+                value = json.dumps(value)
+            elif not isinstance(value, str):
+                value = str(value)
+
+            # Save to vector store
+            self.vector_store.add_texts(
+                texts=[value],
+                metadatas=[metadata],
+                ids=[doc_id]
+            )
+            logger.info(f"Saved memory: {doc_id} with content: {value[:100]}...")
+
+        except Exception as e:
+            logger.error(f"Save failed: {str(e)}")
             raise
 
     def reset(self) -> None:
-        """Reset the memory storage."""
-        if self.allow_reset:
-            try:
-                # Create primary index if it doesn't exist
-                self.cluster.query(
-                    f"CREATE PRIMARY INDEX IF NOT EXISTS ON `{self.bucket_name}`.`{self.scope_name}`.`{self.collection_name}`"
-                ).execute()
-                
-                # Delete all documents
-                self.cluster.query(
-                    f"DELETE FROM `{self.bucket_name}`.`{self.scope_name}`.`{self.collection_name}`"
-                ).execute()
-                logger.info(f"Successfully reset collection: {self.collection_name}")
-            except Exception as e:
-                logger.error(f"Reset failed: {str(e)}")
-                raise
+        """Reset the memory storage if allowed."""
+        if not self.allow_reset:
+            return
+
+        try:
+            # Delete documents of this type
+            self.cluster.query(
+                f"DELETE FROM `{self.bucket_name}`.`{self.scope_name}`.`{self.collection_name}` WHERE type = $type",
+                type=self.type
+            ).execute()
+            logger.info(f"Reset memory type: {self.type}")
+        except Exception as e:
+            logger.error(f"Reset failed: {str(e)}")
+            raise
 
     def _initialize_app(self):
-        """Initialize Couchbase client and vector store."""
+        """Initialize Couchbase connection and vector store."""
         try:
-            # Check for required environment variables
-            if not os.getenv('OPENAI_API_KEY'):
-                raise ValueError("OPENAI_API_KEY environment variable is required")
+            load_dotenv()
 
-            # Initialize OpenAI embeddings
-            self.embeddings = OpenAIEmbeddings(
-                openai_api_key=os.getenv('OPENAI_API_KEY'),
-                model="text-embedding-ada-002"
-            )
+            # Initialize embeddings
+            if self.embedder_config and self.embedder_config.get("provider") == "openai":
+                self.embeddings = OpenAIEmbeddings(
+                    openai_api_key=os.getenv('OPENAI_API_KEY'),
+                    model=self.embedder_config.get("config", {}).get("model", "text-embedding-3-small")
+                )
+            else:
+                self.embeddings = OpenAIEmbeddings(
+                    openai_api_key=os.getenv('OPENAI_API_KEY'),
+                    model="text-embedding-3-small"
+                )
 
             # Connect to Couchbase
             auth = PasswordAuthenticator(
-                os.getenv('CB_USERNAME', 'Administrator'),
-                os.getenv('CB_PASSWORD', 'password')
+                os.getenv('CB_USERNAME', ''),
+                os.getenv('CB_PASSWORD', '')
             )
-            self.cluster = Cluster(
-                os.getenv('CB_HOST', 'couchbase://localhost'),
-                ClusterOptions(auth)
-            )
+            options = ClusterOptions(auth)
             
-            # Set up bucket, scope, and collection names
+            # Initialize cluster connection
+            self.cluster = Cluster(os.getenv('CB_HOST', ''), options)
+            self.cluster.wait_until_ready(timedelta(seconds=5))
+            logger.info("Successfully connected to Couchbase")
+
+            # Check search service
+            ping_result = self.cluster.ping()
+            search_available = False
+            for service_type, endpoints in ping_result.endpoints.items():
+                if service_type == ServiceType.Search:
+                    for endpoint in endpoints:
+                        if endpoint.state == PingState.OK:
+                            search_available = True
+                            logger.info(f"Search service is responding at: {endpoint.remote}")
+                            break
+                    break
+            if not search_available:
+                raise RuntimeError("Search/FTS service not found or not responding")
+            
+            # Set up storage configuration
             self.bucket_name = os.getenv('CB_BUCKET_NAME', 'vector-search-testing')
             self.scope_name = os.getenv('SCOPE_NAME', 'shared')
-            self.collection_name = self.type  # Use the type parameter as collection name
+            self.collection_name = os.getenv('COLLECTION_NAME', 'crew')
             self.index_name = os.getenv('INDEX_NAME', 'vector_search_crew')
-
-            # Create primary index if it doesn't exist
-            self.cluster.query(
-                f"CREATE PRIMARY INDEX IF NOT EXISTS ON `{self.bucket_name}`.`{self.scope_name}`.`{self.collection_name}`"
-            ).execute()
 
             # Initialize vector store
             self.vector_store = CouchbaseVectorStore(
@@ -124,133 +178,138 @@ class CouchbaseStorage(RAGStorage):
                 scope_name=self.scope_name,
                 collection_name=self.collection_name,
                 embedding=self.embeddings,
-                index_name=self.index_name,
+                index_name=self.index_name
             )
-            logger.info("Storage initialized successfully")
+            logger.info(f"Initialized CouchbaseStorage for type: {self.type}")
 
         except Exception as e:
             logger.error(f"Initialization failed: {str(e)}")
             raise
 
-    def save(self, value: Any, metadata: Dict[str, Any]) -> None:
-        """Save a memory entry with metadata."""
-        try:
-            # Add text to vector store
-            self.vector_store.add_texts(
-                texts=[value],
-                metadatas=[metadata or {}],
-                ids=[f"{self.type}_{metadata.get('id', len(self.search('', limit=1)) + 1)}"]
-            )
-            logger.info(f"Successfully saved entry with metadata: {metadata}")
-        except Exception as e:
-            logger.error(f"Save failed: {str(e)}")
-            raise
-
 def main():
-    """
-    Demo function to test CouchbaseStorage functionality.
-    """
+    """Demo function to test CouchbaseStorage with CrewAI."""
     try:
         # Load environment variables
         load_dotenv()
         logger.info("Environment variables loaded")
-        
+
+        # Configure embeddings
+        embedder_config = {
+            "provider": "openai",
+            "config": {
+                "model": "text-embedding-3-small"
+            }
+        }
+
         # Initialize storage
-        logger.info("Initializing CouchbaseStorage...")
-        storage = CouchbaseStorage("crew_stm_demo")
-        
-        # Clear existing data
-        logger.info("Clearing existing data...")
+        storage = CouchbaseStorage(
+            type="short_term",
+            embedder_config=embedder_config
+        )
+
+        # Reset storage for clean demo
         storage.reset()
-        
-        # Test saving entries
-        logger.info("\nSaving test entries...")
-        test_entries = [
-            ("Vector search uses mathematical vectors to find similar items by converting data into high-dimensional vector space", 
-             {"category": "technology", "type": "concept"}),
-            ("Couchbase vector search enables semantic similarity matching by storing and comparing vector embeddings", 
-             {"category": "database", "type": "implementation"}),
-            ("Vector embeddings represent text, images, and other data as numerical vectors for efficient similarity search", 
-             {"category": "search", "type": "technique"})
-        ]
-        
-        for text, metadata in test_entries:
-            storage.save(text, metadata)
-            logger.info(f"Saved entry with metadata: {metadata}")
-        
-        # Test searching
+
+        # Test basic storage functionality
+        logger.info("\nTesting basic storage...")
+        test_memory = "Vector search enables semantic similarity matching by converting data into high-dimensional vectors"
+        test_metadata = {"category": "technology"}
+        storage.save(test_memory, test_metadata)
+
+        # Test search functionality
         logger.info("\nTesting search functionality...")
-        query = "Tell me about vector search"
-        results = storage.search(query, limit=2)
+        search_results = storage.search(
+            query="What is vector search?",
+            limit=1,
+            score_threshold=0.0
+        )
         
-        logger.info(f"\nSearch results for query: '{query}'")
-        print("-"*80)
-        for result in results:
-            print("\nResult:")
-            print(f"Context: {result['context']}")
-            print(f"Metadata: {result['metadata']}")
-            print(f"Score: {result['score']}")
-            print("-"*80)
-        
-        # Test CrewAI integration
-        logger.info("\nTesting CrewAI integration...")
-        
+        if search_results:
+            logger.info("Search test successful!")
+            for result in search_results:
+                print(f"Found: {result['context']}")
+                print(f"Score: {result['score']}")
+                print(f"Metadata: {result['metadata']}")
+        else:
+            logger.warning("No search results found")
+
         # Initialize language model
         llm = ChatOpenAI(
-            openai_api_key=os.getenv('OPENAI_API_KEY'),
             model="gpt-4",
             temperature=0.7
         )
-        
-        # Create agents
+
+        # Create agents with memory
         researcher = Agent(
             role='Research Expert',
-            goal='Find relevant information',
-            backstory='Expert at finding and analyzing information',
+            goal='Research vector search capabilities',
+            backstory='Expert at finding and analyzing information about vector search technology',
             llm=llm,
             memory=True,
-            memory_storage=storage
+            memory_storage=ShortTermMemory(storage=storage)
         )
-        
+
         writer = Agent(
             role='Technical Writer',
             goal='Create clear documentation',
-            backstory='Expert at technical writing and documentation',
+            backstory='Expert at technical documentation',
             llm=llm,
             memory=True,
-            memory_storage=storage
+            memory_storage=ShortTermMemory(storage=storage)
         )
-        
+
         # Create tasks
         research_task = Task(
-            description='Research vector search capabilities',
+            description='Research vector search capabilities in modern databases. Focus on Couchbase vector search features.',
             agent=researcher,
-            expected_output="Detailed findings about vector search technology and implementations"
+            expected_output="A comprehensive analysis of vector search capabilities in modern databases, with emphasis on Couchbase implementation."
         )
-        
+
         writing_task = Task(
-            description='Document the findings',
+            description='Create documentation about vector search findings, focusing on practical implementation details.',
             agent=writer,
-            expected_output="Clear and comprehensive documentation of the research findings",
-            context=[research_task]
+            context=[research_task],
+            expected_output="A well-structured technical document explaining vector search implementation in Couchbase."
         )
-        
-        # Create and run crew
+
+        # Create crew with memory
         crew = Crew(
             agents=[researcher, writer],
             tasks=[research_task, writing_task],
             process=Process.sequential,
-            verbose=False
+            memory=True,
+            verbose=True
+        )
+
+        # Run the crew
+        logger.info("\nStarting crew tasks...")
+        result = crew.kickoff()
+        
+        print("\nCrew Result:")
+        print("-" * 80)
+        print(result)
+        print("-" * 80)
+
+        # Wait for memories to be stored
+        time.sleep(2)
+
+        # Test memory retention
+        logger.info("\nTesting memory retention...")
+        memory_query = "What are the key features of vector search in Couchbase?"
+        memory_results = storage.search(
+            query=memory_query,
+            limit=2,
+            score_threshold=0.0  # Lower threshold to see all results
         )
         
-        logger.info("Starting crew tasks...")
-        result = crew.kickoff()
-        logger.info("Crew tasks completed")
-        print("\nCrew Result:")
-        print("-"*80)
-        print(result)
-        print("-"*80)
-        
+        print("\nMemory Search Results:")
+        print("-" * 80)
+        for result in memory_results:
+            print(f"Context: {result['context']}")
+            print(f"Score: {result['score']}")
+            print(f"Metadata: {result['metadata']}")
+            print("-" * 80)
+
     except Exception as e:
         logger.error(f"Demo failed: {str(e)}")
         raise
