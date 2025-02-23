@@ -14,6 +14,7 @@ from langchain_couchbase.vectorstores import CouchbaseVectorStore
 from langchain_openai import OpenAIEmbeddings, ChatOpenAI
 import time
 import json
+import uuid
 
 # Configure logging
 logging.basicConfig(level=logging.INFO)
@@ -41,7 +42,7 @@ class CouchbaseStorage(RAGStorage):
         """
         try:
             # Add type filter
-            search_filter = {"type": self.type}
+            search_filter = {"memory_type": self.type}
             if filter:
                 search_filter.update(filter)
 
@@ -52,18 +53,23 @@ class CouchbaseStorage(RAGStorage):
                 filter=search_filter
             )
             
-            # Format results
+            # Format results and deduplicate by content
+            seen_contents = set()
             formatted_results = []
+            
             for i, (doc, score) in enumerate(results):
                 if score >= score_threshold:
-                    formatted_results.append({
-                        "id": doc.metadata.get("id", str(i)),
-                        "metadata": doc.metadata,
-                        "context": doc.page_content,
-                        "score": float(score)
-                    })
+                    content = doc.page_content
+                    if content not in seen_contents:
+                        seen_contents.add(content)
+                        formatted_results.append({
+                            "id": doc.metadata.get("memory_id", str(i)),
+                            "metadata": doc.metadata,
+                            "context": content,
+                            "score": float(score)
+                        })
             
-            logger.info(f"Found {len(formatted_results)} results for query: {query}")
+            logger.info(f"Found {len(formatted_results)} unique results for query: {query}")
             return formatted_results
 
         except Exception as e:
@@ -76,16 +82,17 @@ class CouchbaseStorage(RAGStorage):
         """
         try:
             # Generate unique ID
+            memory_id = str(uuid.uuid4())
             timestamp = int(time.time() * 1000)
-            doc_id = f"{self.type}_{timestamp}"
             
             # Prepare metadata
             if not metadata:
                 metadata = {}
             metadata.update({
-                "id": doc_id,
-                "type": self.type,
-                "timestamp": timestamp
+                "memory_id": memory_id,
+                "memory_type": self.type,
+                "timestamp": timestamp,
+                "source": "crewai"
             })
 
             # Convert value to string if needed
@@ -98,9 +105,9 @@ class CouchbaseStorage(RAGStorage):
             self.vector_store.add_texts(
                 texts=[value],
                 metadatas=[metadata],
-                ids=[doc_id]
+                ids=[memory_id]
             )
-            logger.info(f"Saved memory: {doc_id} with content: {value[:100]}...")
+            logger.info(f"Saved memory {memory_id}: {value[:100]}...")
 
         except Exception as e:
             logger.error(f"Save failed: {str(e)}")
@@ -112,9 +119,9 @@ class CouchbaseStorage(RAGStorage):
             return
 
         try:
-            # Delete documents of this type
+            # Delete documents of this memory type
             self.cluster.query(
-                f"DELETE FROM `{self.bucket_name}`.`{self.scope_name}`.`{self.collection_name}` WHERE type = $type",
+                f"DELETE FROM `{self.bucket_name}`.`{self.scope_name}`.`{self.collection_name}` WHERE memory_type = $type",
                 type=self.type
             ).execute()
             logger.info(f"Reset memory type: {self.type}")
@@ -149,7 +156,6 @@ class CouchbaseStorage(RAGStorage):
             # Initialize cluster connection
             self.cluster = Cluster(os.getenv('CB_HOST', ''), options)
             self.cluster.wait_until_ready(timedelta(seconds=5))
-            logger.info("Successfully connected to Couchbase")
 
             # Check search service
             ping_result = self.cluster.ping()
