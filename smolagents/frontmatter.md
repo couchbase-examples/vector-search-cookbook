@@ -1,7 +1,7 @@
 ---
 # frontmatter
 path: "/tutorial-smolagents-couchbase-rag"
-title: Retrieval-Augmented Generation (RAG) with Couchbase and Hugging Face smolagents
+title: Retrieval-Augmented Generation (RAG) with Couchbase and smolagents
 short_title: RAG with Couchbase and smolagents
 description:
   - Learn how to build a semantic search engine using Couchbase and Hugging Face smolagents.
