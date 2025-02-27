@@ -521,7 +521,7 @@ def main():
 
         # Load documents from JSON file
         try:
-            with open('awsbedrock/documents.json', 'r') as f:
+            with open('awsbedrock-agents/documents.json', 'r') as f:
                 data = json.load(f)
                 documents = data.get('documents', [])
                 
@@ -694,19 +694,19 @@ def main():
             #     )
             #     print("Custom Control - Writer Response:", writer_response)
 
-                print("\nTrying Lambda approach...")
-                # Approach 2: Lambda Functions
-                # Deploy Lambda functions first
-                print("Deploying Lambda functions...")
-                import subprocess
-                subprocess.run([
-                    'python3', 
-                    'awsbedrock/lambda_functions/deploy.py'
-                ], check=True)
-                print("Lambda functions deployed successfully")
+            print("\nTrying Lambda approach...")
+            # Approach 2: Lambda Functions
+            # Deploy Lambda functions first
+            print("Deploying Lambda functions...")
+            import subprocess
+            subprocess.run([
+                'python3', 
+                'awsbedrock-agents/lambda_functions/deploy.py'
+            ], check=True)
+            print("Lambda functions deployed successfully")
 
-                # Create action groups with Lambda executors
-                bedrock_agent_client.create_agent_action_group(
+            # Create action groups with Lambda executors
+            bedrock_agent_client.create_agent_action_group(
                     agentId=researcher_id,
                     agentVersion="DRAFT",
                     actionGroupExecutor={
@@ -732,7 +732,7 @@ def main():
                     description="Action group for researcher operations with Lambda"
                 )
 
-                bedrock_agent_client.create_agent_action_group(
+            bedrock_agent_client.create_agent_action_group(
                     agentId=writer_id,
                     agentVersion="DRAFT",
                     actionGroupExecutor={
@@ -758,20 +758,20 @@ def main():
                     description="Action group for writer operations with Lambda"
                 )
 
-                # Test Lambda approach
-                researcher_response = invoke_agent(
+            # Test Lambda approach
+            researcher_response = invoke_agent(
                     researcher_id,
                     researcher_alias,
                     'What is unique about the Cline AI assistant? Use the search_documents function to find relevant information.'
                 )
-                print("Lambda - Researcher Response:", researcher_response)
+            print("Lambda - Researcher Response:", researcher_response)
 
-                writer_response = invoke_agent(
+            writer_response = invoke_agent(
                     writer_id,
                     writer_alias,
                     f'Format this research finding using the format_content function: {researcher_response}'
                 )
-                print("Lambda - Writer Response:", writer_response)
+            print("Lambda - Writer Response:", writer_response)
             
         except Exception as e:
             print(f"Error: {str(e)}")

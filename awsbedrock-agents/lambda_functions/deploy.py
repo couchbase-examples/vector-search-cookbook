@@ -5,6 +5,7 @@ import subprocess
 import time
 
 import boto3
+from botocore.config import Config
 from botocore.exceptions import (ClientError, ConnectionClosedError,
                                  ServiceNotInRegionError)
 
@@ -12,7 +13,14 @@ from botocore.exceptions import (ClientError, ConnectionClosedError,
 def create_lambda_function(function_name, handler, role_arn, zip_file, aws_region, max_retries=3):
     """Create or update Lambda function"""
 
-    lambda_client = boto3.client('lambda', region_name=aws_region)
+    # Configure the client with increased timeouts
+    config = Config(
+        connect_timeout=30,  # 30 seconds
+        read_timeout=60,     # 60 seconds
+        retries={'max_attempts': 3}
+    )
+    
+    lambda_client = boto3.client('lambda', region_name=aws_region, config=config)
     
     # Wait for role to be ready
     print(f"Waiting for role {role_arn} to be ready...")
@@ -31,31 +39,57 @@ def create_lambda_function(function_name, handler, role_arn, zip_file, aws_regio
                         FunctionName=function_name,
                         ZipFile=f.read()
                     )
+                
+                # Update environment variables
+                lambda_client.update_function_configuration(
+                    FunctionName=function_name,
+                    Environment={
+                        'Variables': {
+                            'CB_HOST': os.getenv('CB_HOST', 'couchbase://localhost'),
+                            'CB_USERNAME': os.getenv('CB_USERNAME', 'Administrator'),
+                            'CB_PASSWORD': os.getenv('CB_PASSWORD', 'password'),
+                            'CB_BUCKET_NAME': os.getenv('CB_BUCKET_NAME', 'vector-search-testing'),
+                            'SCOPE_NAME': os.getenv('SCOPE_NAME', 'shared'),
+                            'COLLECTION_NAME': os.getenv('COLLECTION_NAME', 'bedrock'),
+                            'INDEX_NAME': os.getenv('INDEX_NAME', 'vector_search_bedrock')
+                        }
+                    }
+                )
                 break
             except lambda_client.exceptions.ResourceNotFoundException:
                 # Create new function
-                print(f"Lamda doesnt exist. Creating function {function_name}...")
-                with open(zip_file, 'rb') as f:
-                    lambda_client.create_function(
-                        FunctionName=function_name,
-                        Runtime='python3.9',
-                        Role=role_arn,
-                        Handler=handler,
-                        Code={'ZipFile': f.read()},
-                        Timeout=30,
-                        MemorySize=256,
-                        Environment={
-                            'Variables': {
-                                'CB_HOST': os.getenv('CB_HOST', 'couchbase://localhost'),
-                                'CB_USERNAME': os.getenv('CB_USERNAME', 'Administrator'),
-                                'CB_PASSWORD': os.getenv('CB_PASSWORD', 'password'),
-                                'CB_BUCKET_NAME': os.getenv('CB_BUCKET_NAME', 'vector-search-testing'),
-                                'SCOPE_NAME': os.getenv('SCOPE_NAME', 'shared'),
-                                'COLLECTION_NAME': os.getenv('COLLECTION_NAME', 'bedrock'),
-                                'INDEX_NAME': os.getenv('INDEX_NAME', 'vector_search_bedrock')
+                print(f"Lambda doesn't exist. Creating function {function_name}...")
+                try:
+                    with open(zip_file, 'rb') as f:
+                        zip_content = f.read()
+                        print(f"Zip file size: {len(zip_content) / (1024 * 1024):.2f} MB")
+                        
+                        lambda_client.create_function(
+                            FunctionName=function_name,
+                            Runtime='python3.9',
+                            Role=role_arn,
+                            Handler=handler,
+                            Code={'ZipFile': zip_content},
+                            Timeout=60,  # Increased timeout
+                            MemorySize=512,  # Increased memory
+                            Environment={
+                                'Variables': {
+                                    'CB_HOST': os.getenv('CB_HOST', 'couchbase://localhost'),
+                                    'CB_USERNAME': os.getenv('CB_USERNAME', 'Administrator'),
+                                    'CB_PASSWORD': os.getenv('CB_PASSWORD', 'password'),
+                                    'CB_BUCKET_NAME': os.getenv('CB_BUCKET_NAME', 'vector-search-testing'),
+                                    'SCOPE_NAME': os.getenv('SCOPE_NAME', 'shared'),
+                                    'COLLECTION_NAME': os.getenv('COLLECTION_NAME', 'bedrock'),
+                                    'INDEX_NAME': os.getenv('INDEX_NAME', 'vector_search_bedrock')
+                                }
                             }
-                        }
-                    )
+                        )
+                except Exception as e:
+                    print(f"Error creating Lambda function: {str(e)}")
+                    if "Connection was closed" in str(e):
+                        print("Connection issue detected. This might be due to a large payload or network issues.")
+                        print("Consider uploading the Lambda code to S3 first and then creating the function from S3.")
+                    raise
                 break
         except ConnectionClosedError as e:
             if attempt == max_retries - 1:
@@ -86,11 +120,29 @@ def package_function(function_name):
         # Get current directory
         current_dir = os.path.dirname(os.path.abspath(__file__))
         
+        print(f"Installing dependencies for {function_name}...")
         subprocess.check_call([
             'pip', 'install',
+            '--no-cache-dir',  # Don't use the pip cache
+            '--upgrade',       # Upgrade packages if needed
+            '--quiet',         # Hide output
             '-r', os.path.join(current_dir, 'requirements.txt'),
             '-t', build_dir
         ])
+        
+        # Remove unnecessary files to reduce package size
+        print("Cleaning up package to reduce size...")
+        for root, dirs, files in os.walk(build_dir):
+            # Remove test directories
+            for dir_name in dirs[:]:
+                if dir_name in ['tests', 'test', '__pycache__', '.pytest_cache', 'dist-info']:
+                    shutil.rmtree(os.path.join(root, dir_name))
+                    dirs.remove(dir_name)
+            
+            # Remove unnecessary files
+            for file_name in files:
+                if file_name.endswith(('.pyc', '.pyo', '.pyd', '.so', '.c', '.h', '.cpp')):
+                    os.remove(os.path.join(root, file_name))
         
         # Copy function code
         shutil.copy(
@@ -103,7 +155,7 @@ def package_function(function_name):
         shutil.make_archive(function_name, 'zip', build_dir)
         
         return zip_file
-    except (subprocess.CalledProcessError, OSError, shutil.Error) as e:
+    except (subprocess.CalledProcessError, OSError) as e:
         print(f"Error packaging function {function_name}: {str(e)}")
         raise
 
@@ -153,7 +205,9 @@ def main():
                     "Effect": "Allow",
                     "Action": [
                         "bedrock:InvokeModel",
-                        "bedrock-runtime:InvokeModel"
+                        "bedrock-runtime:InvokeModel",
+                        "bedrock-agent:*",
+                        "bedrock-agent-runtime:*"
                     ],
                     "Resource": "*"
                 }]

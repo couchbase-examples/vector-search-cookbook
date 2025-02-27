@@ -1,4 +1,4 @@
 boto3>=1.28.0
 langchain-aws>=0.0.3
 langchain-couchbase>=0.0.3
-couchbase>=4.1.0
+couchbase>=4.3.5

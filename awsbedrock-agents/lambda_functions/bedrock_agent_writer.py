@@ -26,18 +26,23 @@ def lambda_handler(event, context):
             
             # Use Claude to format the content
             response = bedrock_runtime.invoke_model(
-                modelId="anthropic.claude-v2",
+                modelId="anthropic.claude-3-sonnet-20240229-v1:0",
                 body=json.dumps({
-                    "prompt": prompt,
-                    "max_tokens_to_sample": 1000,
+                    "anthropic_version": "bedrock-2023-05-31",
+                    "max_tokens": 1000,
                     "temperature": 0.7,
-                    "anthropic_version": "bedrock-2023-05-31"
+                    "messages": [
+                        {
+                            "role": "user",
+                            "content": f"Format this research finding in a {style} way:\n{content}"
+                        }
+                    ]
                 }).encode('utf-8')
             )
             
             # Extract formatted response
             response_body = json.loads(response['body'].read().decode())
-            formatted_text = response_body['completion']
+            formatted_text = response_body['content'][0]['text']
             
             response = {
                 'messageVersion': '1.0',
