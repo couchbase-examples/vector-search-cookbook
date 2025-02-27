@@ -128,7 +128,7 @@ def wait_for_agent_status(bedrock_agent_client, agent_id, target_statuses=['Avai
     
     return current_status
 
-def invoke_agent(bedrock_runtime_client, agent_id, alias_id, input_text, session_id=None):
+def invoke_agent(bedrock_runtime_client, agent_id, alias_id, input_text, session_id=None, vector_store=None):
     """Invoke a Bedrock agent"""
     if session_id is None:
         session_id = str(uuid.uuid4())
@@ -136,6 +136,7 @@ def invoke_agent(bedrock_runtime_client, agent_id, alias_id, input_text, session
     try:
         logging.info(f"Invoking agent with input: {input_text}")
         
+        # Enable trace for debugging
         response = bedrock_runtime_client.invoke_agent(
             agentId=agent_id,
             agentAliasId=alias_id,
@@ -148,19 +149,128 @@ def invoke_agent(bedrock_runtime_client, agent_id, alias_id, input_text, session
         trace_info = []
         
         # Process the streaming response
-        for event in response['completion']:
+        print("\n--- DEBUGGING AGENT RESPONSE ---")
+        print(f"Response keys: {response.keys()}")
+        
+        for i, event in enumerate(response['completion']):
+            print(f"Event {i} keys: {event.keys()}")
+            print(f"Full event {i}: {event}")
+            
             if 'chunk' in event:
                 chunk = event['chunk']['bytes'].decode('utf-8')
                 result += chunk
-                logging.info(f"Received chunk: {chunk}")
+                print(f"Chunk content: {chunk}")
+            
             if 'trace' in event:
                 trace_info.append(event['trace'])
-                logging.info(f"Trace info: {event['trace']}")
+                print(f"Trace type: {type(event['trace'])}")
+                print(f"Trace keys: {event['trace'].keys() if isinstance(event['trace'], dict) else 'Not a dict'}")
+                
+            if 'returnControl' in event:
+                print(f"Return Control Event: {event['returnControl']}")
+                
+                # Handle the returnControl event
+                return_control = event['returnControl']
+                invocation_inputs = return_control.get('invocationInputs', [])
+                
+                if invocation_inputs:
+                    function_input = invocation_inputs[0].get('functionInvocationInput', {})
+                    action_group = function_input.get('actionGroup')
+                    function_name = function_input.get('function')
+                    parameters = function_input.get('parameters', [])
+                    
+                    # Convert parameters to a dictionary
+                    param_dict = {}
+                    for param in parameters:
+                        param_dict[param.get('name')] = param.get('value')
+                    
+                    print(f"Function call: {action_group}::{function_name}")
+                    print(f"Parameters: {param_dict}")
+                    
+                    # Handle search_documents function
+                    if function_name == 'search_documents':
+                        query = param_dict.get('query')
+                        k = int(param_dict.get('k', 3))
+                        
+                        print(f"Searching for: {query}, k={k}")
+                        
+                        # Import the search_documents function from main_script
+                        import sys
+                        import os
+                        sys.path.append(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
+                        from main_script import search_documents
+                        
+                        # If vector_store is not provided, try to get it from main_script
+                        if vector_store is None:
+                            try:
+                                from main_script import vector_store as vs
+                                vector_store = vs
+                            except ImportError:
+                                print("Could not import vector_store from main_script")
+                        
+                        if vector_store:
+                            # Perform the search
+                            docs = search_documents(vector_store, query, k)
+                            
+                            # Format results
+                            search_results = [doc.page_content for doc in docs]
+                            
+                            print(f"Found {len(search_results)} results")
+                            for i, content in enumerate(search_results):
+                                print(f"Result {i+1}: {content[:100]}...")
+                            
+                            # Since we can't use invoke_agent_continuation, we'll need to start a new conversation
+                            # with the search results
+                            result = f"Search results for '{query}':\n\n"
+                            for i, content in enumerate(search_results):
+                                result += f"Result {i+1}: {content}\n\n"
+                        else:
+                            print("Vector store not available")
+                            result = "Error: Vector store not available"
+                    
+                    # Handle format_content function
+                    elif function_name == 'format_content':
+                        content = param_dict.get('content')
+                        style = param_dict.get('style', 'user-friendly')
+                        
+                        print(f"Formatting content in {style} style")
+                        
+                        # Check if content is valid
+                        if content and content != '?':
+                            # Use a simple formatting approach
+                            result = f"Formatted in {style} style: {content}"
+                        else:
+                            result = "No content provided to format."
+                    else:
+                        print(f"Unknown function: {function_name}")
+                        result = f"Error: Unknown function {function_name}"
+        
+        print(f"Final result: '{result}'")
+        print("--- END DEBUGGING ---\n")
         
         if not result.strip():
             logging.warning("Received empty response from agent")
+            print("NOTE: The agent response is empty. This could be due to:")
+            print("  1. The agent is not properly configured to handle the function")
+            print("  2. The agent is not finding relevant information in the vector store")
+            print("  3. The agent is encountering an error when executing the function")
+            print("  4. The agent's response format doesn't match what we're expecting")
+            
+            # Print trace information for debugging
             if trace_info:
-                logging.info(f"Trace information: {json.dumps(trace_info, indent=2)}")
+                print("\n--- TRACE INFORMATION ---")
+                for i, trace in enumerate(trace_info):
+                    print(f"Trace {i}:")
+                    if isinstance(trace, dict) and 'orchestrationTrace' in trace:
+                        orch_trace = trace['orchestrationTrace']
+                        if 'invocationInput' in orch_trace:
+                            print(f"  Invocation Input: {orch_trace['invocationInput']}")
+                        if 'invocationOutput' in orch_trace:
+                            print(f"  Invocation Output: {orch_trace['invocationOutput']}")
+                        if 'modelInvocationOutput' in orch_trace:
+                            if 'rawResponse' in orch_trace['modelInvocationOutput']:
+                                print(f"  Model Raw Response: {orch_trace['modelInvocationOutput']['rawResponse']}")
+                print("--- END TRACE ---\n")
         
         return result
         
@@ -174,7 +284,8 @@ def run_custom_control_approach(
     researcher_instructions,
     researcher_functions,
     writer_instructions,
-    writer_functions
+    writer_functions,
+    vector_store=None
 ):
     """Run the Custom Control approach for Bedrock agents"""
     print("\nTrying Custom Control approach...")
@@ -259,7 +370,8 @@ def run_custom_control_approach(
         bedrock_runtime_client,
         researcher_id,
         researcher_alias,
-        'What is unique about the Cline AI assistant? Use the search_documents function to find relevant information.'
+        'What is unique about the Cline AI assistant? Use the search_documents function to find relevant information.',
+        vector_store=vector_store
     )
     print("Custom Control - Researcher Response:", researcher_response)
 
@@ -267,6 +379,7 @@ def run_custom_control_approach(
         bedrock_runtime_client,
         writer_id,
         writer_alias,
-        f'Format this research finding using the format_content function: {researcher_response}'
+        f'Format this research finding using the format_content function: {researcher_response}',
+        vector_store=vector_store
     )
     print("Custom Control - Writer Response:", writer_response)

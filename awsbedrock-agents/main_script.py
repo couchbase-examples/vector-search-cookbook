@@ -197,6 +197,7 @@ def main():
         logging.info("Successfully created Bedrock embeddings client")
         
         # Initialize vector store
+        global vector_store
         vector_store = CouchbaseVectorStore(
             cluster=cluster,
             bucket_name=CB_BUCKET_NAME,
@@ -318,7 +319,8 @@ def main():
                 writer_instructions=writer_instructions,
                 writer_functions=writer_functions,
                 aws_region=AWS_REGION,
-                aws_account_id=AWS_ACCOUNT_ID
+                aws_account_id=AWS_ACCOUNT_ID,
+                vector_store=vector_store
             )
         else:
             # Run Custom Control approach (default)
@@ -328,7 +330,8 @@ def main():
                 researcher_instructions=researcher_instructions,
                 researcher_functions=researcher_functions,
                 writer_instructions=writer_instructions,
-                writer_functions=writer_functions
+                writer_functions=writer_functions,
+                vector_store=vector_store
             )
 
     except Exception as e:

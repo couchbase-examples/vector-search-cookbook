@@ -113,26 +113,25 @@ def invoke_agent(bedrock_runtime_client, agent_id, alias_id, input_text, session
             agentAliasId=alias_id,
             sessionId=session_id,
             inputText=input_text,
-            enableTrace=True  # Enable tracing for debugging
+            enableTrace=False  # Disable tracing to reduce noise
         )
         
         result = ""
-        trace_info = []
         
         # Process the streaming response
         for event in response['completion']:
             if 'chunk' in event:
                 chunk = event['chunk']['bytes'].decode('utf-8')
                 result += chunk
-                logging.info(f"Received chunk: {chunk}")
-            if 'trace' in event:
-                trace_info.append(event['trace'])
-                logging.info(f"Trace info: {event['trace']}")
         
         if not result.strip():
             logging.warning("Received empty response from agent")
-            if trace_info:
-                logging.info(f"Trace information: {json.dumps(trace_info, indent=2)}")
+            print("NOTE: The agent response is empty. This could be due to:")
+            print("  1. The Lambda function is not properly handling the request")
+            print("  2. The Lambda function is encountering an error")
+            print("  3. The Lambda function is not returning data in the expected format")
+            print("  4. The agent is not finding relevant information in the vector store")
+            print("  5. Check CloudWatch logs for the Lambda function for more details")
         
         return result
         
@@ -149,7 +148,8 @@ def run_lambda_approach(
     writer_instructions,
     writer_functions,
     aws_region,
-    aws_account_id
+    aws_account_id,
+    vector_store=None
 ):
     """Run the Lambda approach for Bedrock agents"""
     print("\nTrying Lambda approach...")
