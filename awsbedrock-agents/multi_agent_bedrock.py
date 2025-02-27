@@ -8,6 +8,9 @@ from datetime import timedelta
 import boto3
 from couchbase.auth import PasswordAuthenticator
 from couchbase.cluster import Cluster
+from couchbase.exceptions import (InternalServerFailureException,
+                                  QueryIndexAlreadyExistsException,
+                                  ServiceUnavailableException)
 from couchbase.management.buckets import CreateBucketSettings
 from couchbase.management.search import SearchIndex
 from couchbase.options import ClusterOptions
@@ -51,13 +54,12 @@ bedrock_runtime = session.client('bedrock-runtime')
 bedrock_runtime_client = session.client('bedrock-agent-runtime')
 
 def setup_collection(cluster, bucket_name, scope_name, collection_name):
-    """Set up Couchbase collection for vector storage"""
     try:
         # Check if bucket exists, create if it doesn't
         try:
             bucket = cluster.bucket(bucket_name)
             logging.info(f"Bucket '{bucket_name}' exists.")
-        except Exception:
+        except Exception as e:
             logging.info(f"Bucket '{bucket_name}' does not exist. Creating it...")
             bucket_settings = CreateBucketSettings(
                 name=bucket_name,
@@ -93,22 +95,64 @@ def setup_collection(cluster, bucket_name, scope_name, collection_name):
             bucket_manager.create_collection(scope_name, collection_name)
             logging.info(f"Collection '{collection_name}' created successfully.")
         else:
-            logging.info(f"Collection '{collection_name}' already exists.")
+            logging.info(f"Collection '{collection_name}' already exists. Skipping creation.")
 
         # Wait for collection to be ready
         collection = bucket.scope(scope_name).collection(collection_name)
-        time.sleep(2)
+        time.sleep(2)  # Give the collection time to be ready for queries
 
         # Ensure primary index exists
         try:
             cluster.query(f"CREATE PRIMARY INDEX IF NOT EXISTS ON `{bucket_name}`.`{scope_name}`.`{collection_name}`").execute()
-            logging.info("Primary index created successfully.")
+            logging.info("Primary index present or created successfully.")
         except Exception as e:
             logging.warning(f"Error creating primary index: {str(e)}")
+
+        # Clear all documents in the collection
+        try:
+            query = f"DELETE FROM `{bucket_name}`.`{scope_name}`.`{collection_name}`"
+            cluster.query(query).execute()
+            logging.info("All documents cleared from the collection.")
+        except Exception as e:
+            logging.warning(f"Error while clearing documents: {str(e)}. The collection might be empty.")
 
         return collection
     except Exception as e:
         raise RuntimeError(f"Error setting up collection: {str(e)}")
+    
+def setup_indexes(cluster):
+    try:
+        with open('awsbedrock-agents/aws_index.json', 'r') as file:
+            index_definition = json.load(file)
+    except Exception as e:
+        raise ValueError(f"Error loading index definition: {str(e)}")
+    
+    try:
+        scope_index_manager = cluster.bucket(CB_BUCKET_NAME).scope(SCOPE_NAME).search_indexes()
+
+        # Check if index already exists
+        existing_indexes = scope_index_manager.get_all_indexes()
+        index_name = index_definition["name"]
+
+        if index_name in [index.name for index in existing_indexes]:
+            logging.info(f"Index '{index_name}' found")
+        else:
+            logging.info(f"Creating new index '{index_name}'...")
+
+        # Create SearchIndex object from JSON definition
+        search_index = SearchIndex.from_json(index_definition)
+
+        # Upsert the index (create if not exists, update if exists)
+        scope_index_manager.upsert_index(search_index)
+        logging.info(f"Index '{index_name}' successfully created/updated.")
+
+    except QueryIndexAlreadyExistsException:
+        logging.info(f"Index '{index_name}' already exists. Skipping creation/update.")
+    except ServiceUnavailableException:
+        raise RuntimeError("Search service is not available. Please ensure the Search service is enabled in your Couchbase cluster.")
+    except InternalServerFailureException as e:
+        logging.error(f"Internal server error: {str(e)}")
+        raise
 
 def create_agent_role(agent_name, model_id):
     """Create IAM role and policies for the agent"""
@@ -350,18 +394,33 @@ def invoke_agent(agent_id, alias_id, input_text, session_id=None):
         session_id = str(uuid.uuid4())
         
     try:
+        logging.info(f"Invoking agent with input: {input_text}")
+        
         response = bedrock_runtime_client.invoke_agent(
             agentId=agent_id,
             agentAliasId=alias_id,
             sessionId=session_id,
-            inputText=input_text
+            inputText=input_text,
+            enableTrace=True  # Enable tracing for debugging
         )
         
         result = ""
+        trace_info = []
+        
+        # Process the streaming response
         for event in response['completion']:
             if 'chunk' in event:
                 chunk = event['chunk']['bytes'].decode('utf-8')
                 result += chunk
+                logging.info(f"Received chunk: {chunk}")
+            if 'trace' in event:
+                trace_info.append(event['trace'])
+                logging.info(f"Trace info: {event['trace']}")
+        
+        if not result.strip():
+            logging.warning("Received empty response from agent")
+            if trace_info:
+                logging.info(f"Trace information: {json.dumps(trace_info, indent=2)}")
         
         return result
         
@@ -395,8 +454,13 @@ def main():
         logging.info("Successfully connected to Couchbase")
         
         # Set up collections
-        collection = setup_collection(cluster, CB_BUCKET_NAME, SCOPE_NAME, COLLECTION_NAME)
+        setup_collection(cluster, CB_BUCKET_NAME, SCOPE_NAME, COLLECTION_NAME)
         logging.info("Collections setup complete")
+        
+        # Set up search indexes
+        setup_indexes(cluster)
+        logging.info("Search indexes setup complete")
+
         
         # Initialize Bedrock runtime client for embeddings
         embeddings = BedrockEmbeddings(
@@ -706,7 +770,8 @@ def main():
             print("Lambda functions deployed successfully")
 
             # Create action groups with Lambda executors
-            bedrock_agent_client.create_agent_action_group(
+            try:
+                bedrock_agent_client.create_agent_action_group(
                     agentId=researcher_id,
                     agentVersion="DRAFT",
                     actionGroupExecutor={
@@ -731,8 +796,21 @@ def main():
                     }]},
                     description="Action group for researcher operations with Lambda"
                 )
+                logging.info("Created researcher Lambda action group")
+            except bedrock_agent_client.exceptions.ConflictException:
+                logging.info("Researcher Lambda action group already exists")
+                
+            # Prepare researcher agent
+            logging.info("Preparing researcher agent...")
+            bedrock_agent_client.prepare_agent(agentId=researcher_id)
+            status = wait_for_agent_status(
+                researcher_id, 
+                target_statuses=['PREPARED', 'Available']
+            )
+            logging.info(f"Researcher agent preparation completed with status: {status}")
 
-            bedrock_agent_client.create_agent_action_group(
+            try:
+                bedrock_agent_client.create_agent_action_group(
                     agentId=writer_id,
                     agentVersion="DRAFT",
                     actionGroupExecutor={
@@ -757,8 +835,20 @@ def main():
                     }]},
                     description="Action group for writer operations with Lambda"
                 )
+                logging.info("Created writer Lambda action group")
+            except bedrock_agent_client.exceptions.ConflictException:
+                logging.info("Writer Lambda action group already exists")
+                
+            # Prepare writer agent
+            logging.info("Preparing writer agent...")
+            bedrock_agent_client.prepare_agent(agentId=writer_id)
+            status = wait_for_agent_status(
+                writer_id, 
+                target_statuses=['PREPARED', 'Available']
+            )
+            logging.info(f"Writer agent preparation completed with status: {status}")
 
-            # Test Lambda approach
+           # Test Lambda approach
             researcher_response = invoke_agent(
                     researcher_id,
                     researcher_alias,

@@ -10,6 +10,30 @@ from botocore.exceptions import (ClientError, ConnectionClosedError,
                                  ServiceNotInRegionError)
 
 
+def delete_lambda_function(function_name, aws_region):
+    """Delete Lambda function if it exists"""
+    lambda_client = boto3.client('lambda', region_name=aws_region)
+    
+    try:
+        # Check if function exists
+        lambda_client.get_function(FunctionName=function_name)
+        
+        # Delete function
+        print(f"Deleting existing Lambda function: {function_name}")
+        lambda_client.delete_function(FunctionName=function_name)
+        
+        # Wait for deletion to complete
+        print(f"Waiting for {function_name} to be deleted...")
+        time.sleep(10)
+        
+        return True
+    except lambda_client.exceptions.ResourceNotFoundException:
+        print(f"Lambda function {function_name} does not exist. No need to delete.")
+        return False
+    except Exception as e:
+        print(f"Error deleting Lambda function {function_name}: {str(e)}")
+        return False
+
 def create_lambda_function(function_name, handler, role_arn, zip_file, aws_region, max_retries=3):
     """Create or update Lambda function"""
 
@@ -26,86 +50,48 @@ def create_lambda_function(function_name, handler, role_arn, zip_file, aws_regio
     print(f"Waiting for role {role_arn} to be ready...")
     time.sleep(10)  # IAM role propagation delay
     
-    for attempt in range(max_retries):
-        try:
-            try:
-                # Try to get function
-                lambda_client.get_function(FunctionName=function_name)
-                
-                # Update existing function
-                print(f"Updating function {function_name}...")
-                with open(zip_file, 'rb') as f:
-                    lambda_client.update_function_code(
-                        FunctionName=function_name,
-                        ZipFile=f.read()
-                    )
-                
-                # Update environment variables
-                lambda_client.update_function_configuration(
-                    FunctionName=function_name,
-                    Environment={
-                        'Variables': {
-                            'CB_HOST': os.getenv('CB_HOST', 'couchbase://localhost'),
-                            'CB_USERNAME': os.getenv('CB_USERNAME', 'Administrator'),
-                            'CB_PASSWORD': os.getenv('CB_PASSWORD', 'password'),
-                            'CB_BUCKET_NAME': os.getenv('CB_BUCKET_NAME', 'vector-search-testing'),
-                            'SCOPE_NAME': os.getenv('SCOPE_NAME', 'shared'),
-                            'COLLECTION_NAME': os.getenv('COLLECTION_NAME', 'bedrock'),
-                            'INDEX_NAME': os.getenv('INDEX_NAME', 'vector_search_bedrock')
-                        }
+    # Create new function
+    print(f"Creating function {function_name}...")
+    try:
+        with open(zip_file, 'rb') as f:
+            zip_content = f.read()
+            print(f"Zip file size: {len(zip_content) / (1024 * 1024):.2f} MB")
+            
+            lambda_client.create_function(
+                FunctionName=function_name,
+                Runtime='python3.9',
+                Role=role_arn,
+                Handler=handler,
+                Code={'ZipFile': zip_content},
+                Timeout=60,  # Increased timeout
+                MemorySize=512,  # Increased memory
+                Environment={
+                    'Variables': {
+                        'CB_HOST': os.getenv('CB_HOST', 'couchbase://localhost'),
+                        'CB_USERNAME': os.getenv('CB_USERNAME', 'Administrator'),
+                        'CB_PASSWORD': os.getenv('CB_PASSWORD', 'password'),
+                        'CB_BUCKET_NAME': os.getenv('CB_BUCKET_NAME', 'vector-search-testing'),
+                        'SCOPE_NAME': os.getenv('SCOPE_NAME', 'shared'),
+                        'COLLECTION_NAME': os.getenv('COLLECTION_NAME', 'bedrock'),
+                        'INDEX_NAME': os.getenv('INDEX_NAME', 'vector_search_bedrock')
                     }
-                )
-                break
-            except lambda_client.exceptions.ResourceNotFoundException:
-                # Create new function
-                print(f"Lambda doesn't exist. Creating function {function_name}...")
-                try:
-                    with open(zip_file, 'rb') as f:
-                        zip_content = f.read()
-                        print(f"Zip file size: {len(zip_content) / (1024 * 1024):.2f} MB")
-                        
-                        lambda_client.create_function(
-                            FunctionName=function_name,
-                            Runtime='python3.9',
-                            Role=role_arn,
-                            Handler=handler,
-                            Code={'ZipFile': zip_content},
-                            Timeout=60,  # Increased timeout
-                            MemorySize=512,  # Increased memory
-                            Environment={
-                                'Variables': {
-                                    'CB_HOST': os.getenv('CB_HOST', 'couchbase://localhost'),
-                                    'CB_USERNAME': os.getenv('CB_USERNAME', 'Administrator'),
-                                    'CB_PASSWORD': os.getenv('CB_PASSWORD', 'password'),
-                                    'CB_BUCKET_NAME': os.getenv('CB_BUCKET_NAME', 'vector-search-testing'),
-                                    'SCOPE_NAME': os.getenv('SCOPE_NAME', 'shared'),
-                                    'COLLECTION_NAME': os.getenv('COLLECTION_NAME', 'bedrock'),
-                                    'INDEX_NAME': os.getenv('INDEX_NAME', 'vector_search_bedrock')
-                                }
-                            }
-                        )
-                except Exception as e:
-                    print(f"Error creating Lambda function: {str(e)}")
-                    if "Connection was closed" in str(e):
-                        print("Connection issue detected. This might be due to a large payload or network issues.")
-                        print("Consider uploading the Lambda code to S3 first and then creating the function from S3.")
-                    raise
-                break
-        except ConnectionClosedError as e:
-            if attempt == max_retries - 1:
-                print(f"Failed after {max_retries} attempts: {str(e)}")
-                raise
-            print(f"Attempt {attempt + 1} failed: {str(e)}. Retrying...")
-            time.sleep(5 * (attempt + 1))  # Exponential backoff
-        except ServiceNotInRegionError as e:
-            print(f"Service not in region: {str(e)}")
-            raise
-        except ClientError as e:
-            print(f"Client error: {str(e)}")
-            raise
-        except Exception as e:
-            print(f"Unknown error: {str(e)}")
-            raise
+                }
+            )
+    except ConnectionClosedError as e:
+        print(f"Connection closed error: {str(e)}")
+        raise
+    except ServiceNotInRegionError as e:
+        print(f"Service not in region: {str(e)}")
+        raise
+    except ClientError as e:
+        print(f"Client error: {str(e)}")
+        raise
+    except Exception as e:
+        print(f"Error creating Lambda function: {str(e)}")
+        if "Connection was closed" in str(e):
+            print("Connection issue detected. This might be due to a large payload or network issues.")
+            print("Consider uploading the Lambda code to S3 first and then creating the function from S3.")
+        raise
 
 def package_function(function_name):
     """Package Lambda function with dependencies"""
@@ -121,13 +107,15 @@ def package_function(function_name):
         current_dir = os.path.dirname(os.path.abspath(__file__))
         
         print(f"Installing dependencies for {function_name}...")
+        
+        # Use pip directly to install dependencies to the build directory
         subprocess.check_call([
             'pip', 'install',
             '--no-cache-dir',  # Don't use the pip cache
             '--upgrade',       # Upgrade packages if needed
-            '--quiet',         # Hide output
-            '-r', os.path.join(current_dir, 'requirements.txt'),
-            '-t', build_dir
+            '--quiet',         # Hide output (except for errors)
+            '--target', build_dir,  # Install to the build directory
+            '-r', os.path.join(current_dir, 'requirements.txt')
         ])
         
         # Remove unnecessary files to reduce package size
@@ -201,16 +189,28 @@ def main():
             # Attach Bedrock invoke policy
             bedrock_policy = {
                 "Version": "2012-10-17",
-                "Statement": [{
-                    "Effect": "Allow",
-                    "Action": [
-                        "bedrock:InvokeModel",
-                        "bedrock-runtime:InvokeModel",
-                        "bedrock-agent:*",
-                        "bedrock-agent-runtime:*"
-                    ],
-                    "Resource": "*"
-                }]
+                "Statement": [
+                    {
+                        "Effect": "Allow",
+                        "Action": [
+                            "bedrock:InvokeModel",
+                            "bedrock-runtime:InvokeModel",
+                            "bedrock-agent:*",
+                            "bedrock-agent-runtime:*",
+                            "lambda:InvokeFunction"
+                        ],
+                        "Resource": "*"
+                    },
+                    {
+                        "Effect": "Allow",
+                        "Action": [
+                            "logs:CreateLogGroup",
+                            "logs:CreateLogStream",
+                            "logs:PutLogEvents"
+                        ],
+                        "Resource": "arn:aws:logs:*:*:*"
+                    }
+                ]
             }
             
             iam.put_role_policy(
@@ -220,6 +220,10 @@ def main():
             )
         
         role_arn = role['Role']['Arn']
+        
+        # Delete existing Lambda functions
+        delete_lambda_function('bedrock_agent_researcher', aws_region)
+        delete_lambda_function('bedrock_agent_writer', aws_region)
         
         # Package and deploy researcher function
         researcher_zip = package_function('bedrock_agent_researcher')
