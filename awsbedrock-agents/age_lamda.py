@@ -134,6 +134,23 @@ def invoke_agent(bedrock_runtime_client, agent_id, alias_id, input_text, session
                 result += chunk
                 print(f"Chunk content: {chunk}")
             
+            # Handle Lambda function response in trace
+            if 'trace' in event and isinstance(event['trace'], dict) and 'orchestrationTrace' in event['trace']:
+                orch_trace = event['trace']['orchestrationTrace']
+                if 'invocationOutput' in orch_trace:
+                    invocation_output = orch_trace['invocationOutput']
+                    if 'actionGroupInvocationOutput' in invocation_output:
+                        action_output = invocation_output['actionGroupInvocationOutput']
+                        if 'responseBody' in action_output:
+                            response_body = action_output['responseBody']
+                            if isinstance(response_body, dict) and 'application/json' in response_body:
+                                json_body = response_body['application/json']
+                                if 'body' in json_body:
+                                    lambda_result = json_body['body']
+                                    print(f"Lambda result found: {lambda_result}")
+                                    result = lambda_result
+                                    print(f"Updated result to: {result}")
+            
             if 'trace' in event:
                 trace_info.append(event['trace'])
                 print(f"Trace type: {type(event['trace'])}")
@@ -245,7 +262,7 @@ def run_lambda_approach(
             actionGroupExecutor={
                 "lambda": f"arn:aws:lambda:{aws_region}:{aws_account_id}:function:bedrock_agent_researcher"
             },  # This is the key for Lambda approach
-            actionGroupName="researcher_actions_lambda",
+            actionGroupName="researcher_actions",
             functionSchema={"functions": researcher_functions},
             description="Action group for researcher operations with Lambda"
         )
@@ -271,7 +288,7 @@ def run_lambda_approach(
             actionGroupExecutor={
                 "lambda": f"arn:aws:lambda:{aws_region}:{aws_account_id}:function:bedrock_agent_writer"
             },  # This is the key for Lambda approach
-            actionGroupName="writer_actions_lambda",
+            actionGroupName="writer_actions",
             functionSchema={"functions": writer_functions},
             description="Action group for writer operations with Lambda"
         )

@@ -4,7 +4,7 @@ import os
 
 def lambda_handler(event, context):
     try:
-        print("Received event:", json.dumps(event))
+        print("Received event:", json.dumps(event, indent=2))
 
         # Initialize Bedrock client
         bedrock_runtime = boto3.client('bedrock-runtime')
@@ -50,7 +50,7 @@ def lambda_handler(event, context):
                     'httpStatusCode': 200,
                     'responseBody': {
                         'application/json': {
-                            'formatted_text': formatted_text
+                            'body': formatted_text
                         }
                     }
                 }

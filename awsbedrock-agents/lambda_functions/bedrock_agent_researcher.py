@@ -13,7 +13,7 @@ load_dotenv(os.path.join(os.path.dirname(__file__), "..", ".env"))
 
 def lambda_handler(event, context):
     try:
-        print("Received event:", json.dumps(event))
+        print("Received event:", json.dumps(event, indent=2))
 
         # Initialize Couchbase connection
         auth = PasswordAuthenticator(
@@ -57,6 +57,8 @@ def lambda_handler(event, context):
             # Format results
             formatted_results = [doc.page_content for doc in results]
 
+            # Format the response as a simple string
+            result_text = "\n\n".join([f"Result {i+1}: {content}" for i, content in enumerate(formatted_results)])
             response = {
                 'messageVersion': '1.0',
                 'response': {
@@ -66,7 +68,7 @@ def lambda_handler(event, context):
                     'httpStatusCode': 200,
                     'responseBody': {
                         'application/json': {
-                            'results': formatted_results
+                            'body': result_text
                         }
                     }
                 }

@@ -18,8 +18,8 @@ from langchain_aws import BedrockEmbeddings
 from langchain_couchbase.vectorstores import CouchbaseVectorStore
 
 # Import the approach modules
-from custom_control_approach import run_custom_control_approach
-from lambda_approach import run_lambda_approach
+from age_custom_control import run_custom_control_approach
+from age_lamda import run_lambda_approach
 
 # Setup logging
 logging.basicConfig(level=logging.INFO, format='%(asctime)s - %(levelname)s - %(message)s')
@@ -278,6 +278,25 @@ def main():
             "requireConfirmation": "DISABLED"
         }]
 
+        # For Lambda approach, we need to use a different tool name
+        researcher_functions_lambda = [{
+            "name": "search_documents",
+            "description": "Search for relevant documents using semantic similarity",
+            "parameters": {
+                "query": {
+                    "type": "string",
+                    "description": "The search query",
+                    "required": True
+                },
+                "k": {
+                    "type": "integer",
+                    "description": "Number of results to return",
+                    "required": False
+                }
+            },
+            "requireConfirmation": "DISABLED"
+        }]
+
         writer_instructions = """
         You are a Content Writer Assistant that helps format and present research findings.
         Your capabilities include:
@@ -305,6 +324,25 @@ def main():
             "requireConfirmation": "DISABLED"
         }]
 
+        # For Lambda approach, we need to use a different tool name
+        writer_functions_lambda = [{
+            "name": "format_content",
+            "description": "Format and present research findings",
+            "parameters": {
+                "content": {
+                    "type": "string",
+                    "description": "The research findings to format",
+                    "required": True
+                },
+                "style": {
+                    "type": "string",
+                    "description": "The desired presentation style (e.g., summary, detailed, bullet points)",
+                    "required": False
+                }
+            },
+            "requireConfirmation": "DISABLED"
+        }]
+
         # Choose which approach to run
         approach = os.getenv("APPROACH", "custom_control").lower()
         
@@ -315,9 +353,9 @@ def main():
                 bedrock_agent_client=bedrock_agent_client,
                 bedrock_runtime_client=bedrock_runtime_client,
                 researcher_instructions=researcher_instructions,
-                researcher_functions=researcher_functions,
+                researcher_functions=researcher_functions_lambda,
                 writer_instructions=writer_instructions,
-                writer_functions=writer_functions,
+                writer_functions=writer_functions_lambda,
                 aws_region=AWS_REGION,
                 aws_account_id=AWS_ACCOUNT_ID,
                 vector_store=vector_store
