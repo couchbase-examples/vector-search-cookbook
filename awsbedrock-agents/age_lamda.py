@@ -119,20 +119,12 @@ def invoke_agent(bedrock_runtime_client, agent_id, alias_id, input_text, session
         )
         
         result = ""
-        trace_info = []
         
         # Process the streaming response
-        print("\n--- DEBUGGING AGENT RESPONSE ---")
-        print(f"Response keys: {response.keys()}")
-        
-        for i, event in enumerate(response['completion']):
-            print(f"Event {i} keys: {event.keys()}")
-            print(f"Full event {i}: {event}")
-            
+        for event in response['completion']:
             if 'chunk' in event:
                 chunk = event['chunk']['bytes'].decode('utf-8')
                 result += chunk
-                print(f"Chunk content: {chunk}")
             
             # Handle Lambda function response in trace
             if 'trace' in event and isinstance(event['trace'], dict) and 'orchestrationTrace' in event['trace']:
@@ -147,42 +139,12 @@ def invoke_agent(bedrock_runtime_client, agent_id, alias_id, input_text, session
                                 json_body = response_body['application/json']
                                 if 'body' in json_body:
                                     lambda_result = json_body['body']
-                                    print(f"Lambda result found: {lambda_result}")
                                     result = lambda_result
-                                    print(f"Updated result to: {result}")
             
-            if 'trace' in event:
-                trace_info.append(event['trace'])
-                print(f"Trace type: {type(event['trace'])}")
-                print(f"Trace keys: {event['trace'].keys() if isinstance(event['trace'], dict) else 'Not a dict'}")
-        
-        print(f"Final result: '{result}'")
-        print("--- END DEBUGGING ---\n")
+            
         
         if not result.strip():
             logging.warning("Received empty response from agent")
-            print("NOTE: The agent response is empty. This could be due to:")
-            print("  1. The Lambda function is not properly handling the request")
-            print("  2. The Lambda function is encountering an error")
-            print("  3. The Lambda function is not returning data in the expected format")
-            print("  4. The agent is not finding relevant information in the vector store")
-            print("  5. Check CloudWatch logs for the Lambda function for more details")
-            
-            # Print trace information for debugging
-            if trace_info:
-                print("\n--- TRACE INFORMATION ---")
-                for i, trace in enumerate(trace_info):
-                    print(f"Trace {i}:")
-                    if isinstance(trace, dict) and 'orchestrationTrace' in trace:
-                        orch_trace = trace['orchestrationTrace']
-                        if 'invocationInput' in orch_trace:
-                            print(f"  Invocation Input: {orch_trace['invocationInput']}")
-                        if 'invocationOutput' in orch_trace:
-                            print(f"  Invocation Output: {orch_trace['invocationOutput']}")
-                        if 'modelInvocationOutput' in orch_trace:
-                            if 'rawResponse' in orch_trace['modelInvocationOutput']:
-                                print(f"  Model Raw Response: {orch_trace['modelInvocationOutput']['rawResponse']}")
-                print("--- END TRACE ---\n")
         
         return result
         

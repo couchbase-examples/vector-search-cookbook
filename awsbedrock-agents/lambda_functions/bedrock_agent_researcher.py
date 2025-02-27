@@ -13,7 +13,7 @@ load_dotenv(os.path.join(os.path.dirname(__file__), "..", ".env"))
 
 def lambda_handler(event, context):
     try:
-        print("Received event:", json.dumps(event, indent=2))
+        # Process the event
 
         # Initialize Couchbase connection
         auth = PasswordAuthenticator(
@@ -74,13 +74,11 @@ def lambda_handler(event, context):
                 }
             }
 
-            print("Returning response:", json.dumps(response))
             return response
         else:
             raise ValueError(f"Unknown API path: {api_path}")
 
     except Exception as e:
-        print(f"Error: {str(e)}")
         return {
             'messageVersion': '1.0',
             'response': {
