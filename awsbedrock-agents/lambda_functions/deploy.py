@@ -3,12 +3,16 @@ import os
 import shutil
 import subprocess
 import time
+import uuid
 
 import boto3
 from botocore.config import Config
 from botocore.exceptions import (ClientError, ConnectionClosedError,
                                  ServiceNotInRegionError)
+from dotenv import load_dotenv
 
+# Load environment variables from .env file
+load_dotenv(os.path.join(os.path.dirname(__file__), "..", ".env"))
 
 def delete_lambda_function(function_name, aws_region):
     """Delete Lambda function if it exists"""
@@ -34,7 +38,53 @@ def delete_lambda_function(function_name, aws_region):
         print(f"Error deleting Lambda function {function_name}: {str(e)}")
         return False
 
-def create_lambda_function(function_name, handler, role_arn, zip_file, aws_region, max_retries=3):
+def upload_to_s3(zip_file, aws_region, bucket_name=None):
+    """Upload zip file to S3 and return S3 location"""
+    s3_client = boto3.client('s3', region_name=aws_region)
+    
+    # Create bucket if it doesn't exist
+    if bucket_name is None:
+        # Generate a unique bucket name
+        account_id = boto3.client('sts').get_caller_identity().get('Account')
+        bucket_name = f"lambda-deployment-{account_id}-{aws_region}"
+    
+    try:
+        s3_client.head_bucket(Bucket=bucket_name)
+        print(f"Using existing S3 bucket: {bucket_name}")
+    except Exception:
+        try:
+            if aws_region == 'us-east-1':
+                s3_client.create_bucket(Bucket=bucket_name)
+            else:
+                s3_client.create_bucket(
+                    Bucket=bucket_name,
+                    CreateBucketConfiguration={'LocationConstraint': aws_region}
+                )
+            print(f"Created S3 bucket: {bucket_name}")
+        except Exception as e:
+            print(f"Error creating S3 bucket: {str(e)}")
+            # Try with a more unique name
+            bucket_name = f"lambda-deployment-{account_id}-{aws_region}-{uuid.uuid4().hex[:8]}"
+            if aws_region == 'us-east-1':
+                s3_client.create_bucket(Bucket=bucket_name)
+            else:
+                s3_client.create_bucket(
+                    Bucket=bucket_name,
+                    CreateBucketConfiguration={'LocationConstraint': aws_region}
+                )
+            print(f"Created S3 bucket with unique name: {bucket_name}")
+    
+    # Upload zip file to S3
+    key = f"lambda/{os.path.basename(zip_file)}"
+    s3_client.upload_file(zip_file, bucket_name, key)
+    print(f"Uploaded {zip_file} to s3://{bucket_name}/{key}")
+    
+    return {
+        'S3Bucket': bucket_name,
+        'S3Key': key
+    }
+
+def create_lambda_function(function_name, handler, role_arn, zip_file, aws_region):
     """Create or update Lambda function"""
 
     # Configure the client with increased timeouts
@@ -55,28 +105,56 @@ def create_lambda_function(function_name, handler, role_arn, zip_file, aws_regio
     try:
         with open(zip_file, 'rb') as f:
             zip_content = f.read()
-            print(f"Zip file size: {len(zip_content) / (1024 * 1024):.2f} MB")
+            zip_size_mb = len(zip_content) / (1024 * 1024)
+            print(f"Zip file size: {zip_size_mb:.2f} MB")
             
-            lambda_client.create_function(
-                FunctionName=function_name,
-                Runtime='python3.9',
-                Role=role_arn,
-                Handler=handler,
-                Code={'ZipFile': zip_content},
-                Timeout=60,  # Increased timeout
-                MemorySize=512,  # Increased memory
-                Environment={
-                    'Variables': {
-                        'CB_HOST': os.getenv('CB_HOST', 'couchbase://localhost'),
-                        'CB_USERNAME': os.getenv('CB_USERNAME', 'Administrator'),
-                        'CB_PASSWORD': os.getenv('CB_PASSWORD', 'password'),
-                        'CB_BUCKET_NAME': os.getenv('CB_BUCKET_NAME', 'vector-search-testing'),
-                        'SCOPE_NAME': os.getenv('SCOPE_NAME', 'shared'),
-                        'COLLECTION_NAME': os.getenv('COLLECTION_NAME', 'bedrock'),
-                        'INDEX_NAME': os.getenv('INDEX_NAME', 'vector_search_bedrock')
+            # If zip file is larger than 50MB, upload to S3 first
+            if zip_size_mb > 50:
+                print("Zip file is larger than 50MB. Uploading to S3 first...")
+                s3_location = upload_to_s3(zip_file, aws_region)
+                
+                lambda_client.create_function(
+                    FunctionName=function_name,
+                    Runtime='python3.9',
+                    Role=role_arn,
+                    Handler=handler,
+                    Code=s3_location,
+                    Timeout=60,  # Increased timeout
+                    MemorySize=512,  # Increased memory
+                    Environment={
+                        'Variables': {
+                            'CB_HOST': os.getenv('CB_HOST', 'couchbase://localhost'),
+                            'CB_USERNAME': os.getenv('CB_USERNAME', 'Administrator'),
+                            'CB_PASSWORD': os.getenv('CB_PASSWORD', 'password'),
+                            'CB_BUCKET_NAME': os.getenv('CB_BUCKET_NAME', 'vector-search-testing'),
+                            'SCOPE_NAME': os.getenv('SCOPE_NAME', 'shared'),
+                            'COLLECTION_NAME': os.getenv('COLLECTION_NAME', 'bedrock'),
+                            'INDEX_NAME': os.getenv('INDEX_NAME', 'vector_search_bedrock')
+                        }
                     }
-                }
-            )
+                )
+            else:
+                # For smaller files, use direct upload
+                lambda_client.create_function(
+                    FunctionName=function_name,
+                    Runtime='python3.9',
+                    Role=role_arn,
+                    Handler=handler,
+                    Code={'ZipFile': zip_content},
+                    Timeout=60,  # Increased timeout
+                    MemorySize=512,  # Increased memory
+                    Environment={
+                        'Variables': {
+                            'CB_HOST': os.getenv('CB_HOST', 'couchbase://localhost'),
+                            'CB_USERNAME': os.getenv('CB_USERNAME', 'Administrator'),
+                            'CB_PASSWORD': os.getenv('CB_PASSWORD', 'password'),
+                            'CB_BUCKET_NAME': os.getenv('CB_BUCKET_NAME', 'vector-search-testing'),
+                            'SCOPE_NAME': os.getenv('SCOPE_NAME', 'shared'),
+                            'COLLECTION_NAME': os.getenv('COLLECTION_NAME', 'bedrock'),
+                            'INDEX_NAME': os.getenv('INDEX_NAME', 'vector_search_bedrock')
+                        }
+                    }
+                )
     except ConnectionClosedError as e:
         print(f"Connection closed error: {str(e)}")
         raise
@@ -118,20 +196,21 @@ def package_function(function_name):
             '-r', os.path.join(current_dir, 'requirements.txt')
         ])
         
-        # Remove unnecessary files to reduce package size
-        print("Cleaning up package to reduce size...")
-        for root, dirs, files in os.walk(build_dir):
-            # Remove test directories
-            for dir_name in dirs[:]:
-                if dir_name in ['tests', 'test', '__pycache__', '.pytest_cache', 'dist-info']:
-                    shutil.rmtree(os.path.join(root, dir_name))
-                    dirs.remove(dir_name)
+        # # Removes Couchbase SDK files as well. Not needed for Lambda deployment.
+        # # Remove unnecessary files to reduce package size
+        # print("Cleaning up package to reduce size...")
+        # for root, dirs, files in os.walk(build_dir):
+        #     # Remove test directories
+        #     for dir_name in dirs[:]:
+        #         if dir_name in ['tests', 'test', '__pycache__', '.pytest_cache', 'dist-info']:
+        #             shutil.rmtree(os.path.join(root, dir_name))
+        #             dirs.remove(dir_name)
             
-            # Remove unnecessary files
-            for file_name in files:
-                if file_name.endswith(('.pyc', '.pyo', '.pyd', '.so', '.c', '.h', '.cpp')):
-                    os.remove(os.path.join(root, file_name))
-        
+        #     # Remove unnecessary files
+        #     for file_name in files:
+        #         if file_name.endswith(('.pyc', '.pyo', '.pyd', '.so', '.c', '.h', '.cpp')):
+        #             os.remove(os.path.join(root, file_name))
+   
         # Copy function code
         shutil.copy(
             os.path.join(current_dir, f'{function_name}.py'), 

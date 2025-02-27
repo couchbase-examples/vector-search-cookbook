@@ -6,6 +6,10 @@ from couchbase.cluster import Cluster
 from couchbase.options import ClusterOptions
 import boto3
 import os
+from dotenv import load_dotenv
+
+# Load environment variables from .env file
+load_dotenv(os.path.join(os.path.dirname(__file__), "..", ".env"))
 
 def lambda_handler(event, context):
     try:

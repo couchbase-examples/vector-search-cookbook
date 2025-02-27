@@ -758,26 +758,14 @@ def main():
             #     )
             #     print("Custom Control - Writer Response:", writer_response)
 
-            print("\nTrying Lambda approach...")
-            # Approach 2: Lambda Functions
-            # Deploy Lambda functions first
-            print("Deploying Lambda functions...")
-            import subprocess
-            subprocess.run([
-                'python3', 
-                'awsbedrock-agents/lambda_functions/deploy.py'
-            ], check=True)
-            print("Lambda functions deployed successfully")
-
-            # Create action groups with Lambda executors
+            print("\nTrying Custom Control approach...")
+            # Approach: Custom Control (direct function calls)
             try:
                 bedrock_agent_client.create_agent_action_group(
                     agentId=researcher_id,
                     agentVersion="DRAFT",
-                    actionGroupExecutor={
-                        "lambda": f"arn:aws:lambda:{AWS_REGION}:{AWS_ACCOUNT_ID}:function:bedrock_agent_researcher"
-                    },
-                    actionGroupName="researcher_actions_lambda",
+                    actionGroupExecutor={"customControl": "RETURN_CONTROL"},
+                    actionGroupName="researcher_actions",
                     functionSchema={"functions": [{
                         "name": "search_documents",
                         "description": "Search for relevant documents using semantic similarity",
@@ -794,11 +782,11 @@ def main():
                             }
                         }
                     }]},
-                    description="Action group for researcher operations with Lambda"
+                    description="Action group for researcher operations"
                 )
-                logging.info("Created researcher Lambda action group")
+                logging.info("Created researcher action group")
             except bedrock_agent_client.exceptions.ConflictException:
-                logging.info("Researcher Lambda action group already exists")
+                logging.info("Researcher action group already exists")
                 
             # Prepare researcher agent
             logging.info("Preparing researcher agent...")
@@ -813,10 +801,8 @@ def main():
                 bedrock_agent_client.create_agent_action_group(
                     agentId=writer_id,
                     agentVersion="DRAFT",
-                    actionGroupExecutor={
-                        "lambda": f"arn:aws:lambda:{AWS_REGION}:{AWS_ACCOUNT_ID}:function:bedrock_agent_writer"
-                    },
-                    actionGroupName="writer_actions_lambda",
+                    actionGroupExecutor={"customControl": "RETURN_CONTROL"},
+                    actionGroupName="writer_actions",
                     functionSchema={"functions": [{
                         "name": "format_content",
                         "description": "Format research findings in a user-friendly way",
@@ -833,11 +819,11 @@ def main():
                             }
                         }
                     }]},
-                    description="Action group for writer operations with Lambda"
+                    description="Action group for writer operations"
                 )
-                logging.info("Created writer Lambda action group")
+                logging.info("Created writer action group")
             except bedrock_agent_client.exceptions.ConflictException:
-                logging.info("Writer Lambda action group already exists")
+                logging.info("Writer action group already exists")
                 
             # Prepare writer agent
             logging.info("Preparing writer agent...")
@@ -848,20 +834,20 @@ def main():
             )
             logging.info(f"Writer agent preparation completed with status: {status}")
 
-           # Test Lambda approach
+           # Test Custom Control approach
             researcher_response = invoke_agent(
                     researcher_id,
                     researcher_alias,
                     'What is unique about the Cline AI assistant? Use the search_documents function to find relevant information.'
                 )
-            print("Lambda - Researcher Response:", researcher_response)
+            print("Custom Control - Researcher Response:", researcher_response)
 
             writer_response = invoke_agent(
                     writer_id,
                     writer_alias,
                     f'Format this research finding using the format_content function: {researcher_response}'
                 )
-            print("Lambda - Writer Response:", writer_response)
+            print("Custom Control - Writer Response:", writer_response)
             
         except Exception as e:
             print(f"Error: {str(e)}")

@@ -21,9 +21,6 @@ def lambda_handler(event, context):
             if not content:
                 raise ValueError("Content parameter is required")
             
-            # Create prompt for formatting
-            prompt = f"\n\nHuman: Format this research finding in a {style} way:\n{content}\n\nAssistant:"
-            
             # Use Claude to format the content
             response = bedrock_runtime.invoke_model(
                 modelId="anthropic.claude-3-sonnet-20240229-v1:0",
