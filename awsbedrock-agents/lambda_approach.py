@@ -3,6 +3,7 @@ import logging
 import subprocess
 import time
 import uuid
+import os
 
 def create_agent(bedrock_agent_client, name, instructions, functions, model_id="amazon.nova-pro-v1:0"):
     """Create a Bedrock agent with Lambda action groups"""
@@ -100,7 +101,7 @@ def wait_for_agent_status(bedrock_agent_client, agent_id, target_statuses=['Avai
     
     return current_status
 
-def invoke_agent(bedrock_runtime_client, agent_id, alias_id, input_text, session_id=None):
+def invoke_agent(bedrock_runtime_client, agent_id, alias_id, input_text, session_id=None, vector_store=None):
     """Invoke a Bedrock agent"""
     if session_id is None:
         session_id = str(uuid.uuid4())
@@ -108,21 +109,38 @@ def invoke_agent(bedrock_runtime_client, agent_id, alias_id, input_text, session
     try:
         logging.info(f"Invoking agent with input: {input_text}")
         
+        # Enable trace for debugging
         response = bedrock_runtime_client.invoke_agent(
             agentId=agent_id,
             agentAliasId=alias_id,
             sessionId=session_id,
             inputText=input_text,
-            enableTrace=False  # Disable tracing to reduce noise
+            enableTrace=True  # Enable tracing for debugging
         )
         
         result = ""
+        trace_info = []
         
         # Process the streaming response
-        for event in response['completion']:
+        print("\n--- DEBUGGING AGENT RESPONSE ---")
+        print(f"Response keys: {response.keys()}")
+        
+        for i, event in enumerate(response['completion']):
+            print(f"Event {i} keys: {event.keys()}")
+            print(f"Full event {i}: {event}")
+            
             if 'chunk' in event:
                 chunk = event['chunk']['bytes'].decode('utf-8')
                 result += chunk
+                print(f"Chunk content: {chunk}")
+            
+            if 'trace' in event:
+                trace_info.append(event['trace'])
+                print(f"Trace type: {type(event['trace'])}")
+                print(f"Trace keys: {event['trace'].keys() if isinstance(event['trace'], dict) else 'Not a dict'}")
+        
+        print(f"Final result: '{result}'")
+        print("--- END DEBUGGING ---\n")
         
         if not result.strip():
             logging.warning("Received empty response from agent")
@@ -132,6 +150,22 @@ def invoke_agent(bedrock_runtime_client, agent_id, alias_id, input_text, session
             print("  3. The Lambda function is not returning data in the expected format")
             print("  4. The agent is not finding relevant information in the vector store")
             print("  5. Check CloudWatch logs for the Lambda function for more details")
+            
+            # Print trace information for debugging
+            if trace_info:
+                print("\n--- TRACE INFORMATION ---")
+                for i, trace in enumerate(trace_info):
+                    print(f"Trace {i}:")
+                    if isinstance(trace, dict) and 'orchestrationTrace' in trace:
+                        orch_trace = trace['orchestrationTrace']
+                        if 'invocationInput' in orch_trace:
+                            print(f"  Invocation Input: {orch_trace['invocationInput']}")
+                        if 'invocationOutput' in orch_trace:
+                            print(f"  Invocation Output: {orch_trace['invocationOutput']}")
+                        if 'modelInvocationOutput' in orch_trace:
+                            if 'rawResponse' in orch_trace['modelInvocationOutput']:
+                                print(f"  Model Raw Response: {orch_trace['modelInvocationOutput']['rawResponse']}")
+                print("--- END TRACE ---\n")
         
         return result
         
@@ -157,6 +191,16 @@ def run_lambda_approach(
     # Deploy Lambda functions first
     print("Deploying Lambda functions...")
     try:
+        # Create a .env file for the Lambda functions with the vector store configuration
+        with open('awsbedrock-agents/lambda_functions/.env', 'w') as f:
+            f.write(f"CB_HOST={os.environ.get('CB_HOST', 'couchbase://localhost')}\n")
+            f.write(f"CB_USERNAME={os.environ.get('CB_USERNAME', 'Administrator')}\n")
+            f.write(f"CB_PASSWORD={os.environ.get('CB_PASSWORD', 'password')}\n")
+            f.write(f"CB_BUCKET_NAME={os.environ.get('CB_BUCKET_NAME', 'vector-search-testing')}\n")
+            f.write(f"SCOPE_NAME={os.environ.get('SCOPE_NAME', 'shared')}\n")
+            f.write(f"COLLECTION_NAME={os.environ.get('COLLECTION_NAME', 'bedrock')}\n")
+            f.write(f"INDEX_NAME={os.environ.get('INDEX_NAME', 'vector_search_bedrock')}\n")
+        
         subprocess.run([
             'python3', 
             'awsbedrock-agents/lambda_functions/deploy.py'
@@ -250,7 +294,8 @@ def run_lambda_approach(
         bedrock_runtime_client,
         researcher_id,
         researcher_alias,
-        'What is unique about the Cline AI assistant? Use the search_documents function to find relevant information.'
+        'What is unique about the Cline AI assistant? Use the search_documents function to find relevant information.',
+        vector_store=vector_store
     )
     print("Lambda - Researcher Response:", researcher_response)
 
@@ -258,6 +303,7 @@ def run_lambda_approach(
         bedrock_runtime_client,
         writer_id,
         writer_alias,
-        f'Format this research finding using the format_content function: {researcher_response}'
+        f'Format this research finding using the format_content function: {researcher_response}',
+        vector_store=vector_store
     )
     print("Lambda - Writer Response:", writer_response)

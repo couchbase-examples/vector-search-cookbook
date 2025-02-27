@@ -17,19 +17,19 @@ load_dotenv(os.path.join(os.path.dirname(__file__), "..", ".env"))
 def delete_lambda_function(function_name, aws_region):
     """Delete Lambda function if it exists"""
     lambda_client = boto3.client('lambda', region_name=aws_region)
-    
+
     try:
         # Check if function exists
         lambda_client.get_function(FunctionName=function_name)
-        
+
         # Delete function
         print(f"Deleting existing Lambda function: {function_name}")
         lambda_client.delete_function(FunctionName=function_name)
-        
+
         # Wait for deletion to complete
         print(f"Waiting for {function_name} to be deleted...")
         time.sleep(10)
-        
+
         return True
     except lambda_client.exceptions.ResourceNotFoundException:
         print(f"Lambda function {function_name} does not exist. No need to delete.")
@@ -41,13 +41,13 @@ def delete_lambda_function(function_name, aws_region):
 def upload_to_s3(zip_file, aws_region, bucket_name=None):
     """Upload zip file to S3 and return S3 location"""
     s3_client = boto3.client('s3', region_name=aws_region)
-    
+
     # Create bucket if it doesn't exist
     if bucket_name is None:
         # Generate a unique bucket name
         account_id = boto3.client('sts').get_caller_identity().get('Account')
         bucket_name = f"lambda-deployment-{account_id}-{aws_region}"
-    
+
     try:
         s3_client.head_bucket(Bucket=bucket_name)
         print(f"Using existing S3 bucket: {bucket_name}")
@@ -73,12 +73,12 @@ def upload_to_s3(zip_file, aws_region, bucket_name=None):
                     CreateBucketConfiguration={'LocationConstraint': aws_region}
                 )
             print(f"Created S3 bucket with unique name: {bucket_name}")
-    
+
     # Upload zip file to S3
     key = f"lambda/{os.path.basename(zip_file)}"
     s3_client.upload_file(zip_file, bucket_name, key)
     print(f"Uploaded {zip_file} to s3://{bucket_name}/{key}")
-    
+
     return {
         'S3Bucket': bucket_name,
         'S3Key': key
@@ -93,13 +93,13 @@ def create_lambda_function(function_name, handler, role_arn, zip_file, aws_regio
         read_timeout=60,     # 60 seconds
         retries={'max_attempts': 3}
     )
-    
+
     lambda_client = boto3.client('lambda', region_name=aws_region, config=config)
-    
+
     # Wait for role to be ready
     print(f"Waiting for role {role_arn} to be ready...")
     time.sleep(10)  # IAM role propagation delay
-    
+
     # Create new function
     print(f"Creating function {function_name}...")
     try:
@@ -107,12 +107,12 @@ def create_lambda_function(function_name, handler, role_arn, zip_file, aws_regio
             zip_content = f.read()
             zip_size_mb = len(zip_content) / (1024 * 1024)
             print(f"Zip file size: {zip_size_mb:.2f} MB")
-            
-            # If zip file is larger than 50MB, upload to S3 first
+
+            # If zip file is larger than 50MB upload to S3 first
             if zip_size_mb > 50:
                 print("Zip file is larger than 50MB. Uploading to S3 first...")
                 s3_location = upload_to_s3(zip_file, aws_region)
-                
+
                 lambda_client.create_function(
                     FunctionName=function_name,
                     Runtime='python3.9',
@@ -134,7 +134,7 @@ def create_lambda_function(function_name, handler, role_arn, zip_file, aws_regio
                     }
                 )
             else:
-                # For smaller files, use direct upload
+                # For smaller files use direct upload
                 lambda_client.create_function(
                     FunctionName=function_name,
                     Runtime='python3.9',
@@ -179,13 +179,13 @@ def package_function(function_name):
         if os.path.exists(build_dir):
             shutil.rmtree(build_dir)
         os.makedirs(build_dir)
-        
+
         # Install dependencies
         # Get current directory
         current_dir = os.path.dirname(os.path.abspath(__file__))
-        
+
         print(f"Installing dependencies for {function_name}...")
-        
+
         # Use pip directly to install dependencies to the build directory
         subprocess.check_call([
             'pip', 'install',
@@ -195,7 +195,7 @@ def package_function(function_name):
             '--target', build_dir,  # Install to the build directory
             '-r', os.path.join(current_dir, 'requirements.txt')
         ])
-        
+
         # # Removes Couchbase SDK files as well. Not needed for Lambda deployment.
         # # Remove unnecessary files to reduce package size
         # print("Cleaning up package to reduce size...")
@@ -205,22 +205,22 @@ def package_function(function_name):
         #         if dir_name in ['tests', 'test', '__pycache__', '.pytest_cache', 'dist-info']:
         #             shutil.rmtree(os.path.join(root, dir_name))
         #             dirs.remove(dir_name)
-            
+
         #     # Remove unnecessary files
         #     for file_name in files:
         #         if file_name.endswith(('.pyc', '.pyo', '.pyd', '.so', '.c', '.h', '.cpp')):
         #             os.remove(os.path.join(root, file_name))
-   
+
         # Copy function code
         shutil.copy(
-            os.path.join(current_dir, f'{function_name}.py'), 
+            os.path.join(current_dir, f'{function_name}.py'),
             os.path.join(build_dir, 'lambda_function.py')
         )
-        
+
         # Create zip file
         zip_file = f'{function_name}.zip'
         shutil.make_archive(function_name, 'zip', build_dir)
-        
+
         return zip_file
     except (subprocess.CalledProcessError, OSError) as e:
         print(f"Error packaging function {function_name}: {str(e)}")
@@ -232,15 +232,15 @@ def main():
         aws_account_id = os.getenv('AWS_ACCOUNT_ID')
         if not aws_account_id:
             raise ValueError("AWS_ACCOUNT_ID environment variable is required")
-            
+
         aws_region = os.getenv('AWS_REGION', 'us-east-1')
-        
+
         # Initialize AWS clients
         iam = boto3.client('iam', region_name=aws_region)
-        
+
         # Create IAM role for Lambda
         role_name = 'bedrock_agent_lambda_role'
-        
+
         try:
             role = iam.get_role(RoleName=role_name)
         except iam.exceptions.NoSuchEntityException:
@@ -253,18 +253,18 @@ def main():
                     "Action": "sts:AssumeRole"
                 }]
             }
-            
+
             role = iam.create_role(
                 RoleName=role_name,
                 AssumeRolePolicyDocument=json.dumps(trust_policy)
             )
-            
+
             # Attach basic Lambda execution policy
             iam.attach_role_policy(
                 RoleName=role_name,
                 PolicyArn='arn:aws:iam::aws:policy/service-role/AWSLambdaBasicExecutionRole'
             )
-            
+
             # Attach Bedrock invoke policy
             bedrock_policy = {
                 "Version": "2012-10-17",
@@ -291,19 +291,19 @@ def main():
                     }
                 ]
             }
-            
+
             iam.put_role_policy(
                 RoleName=role_name,
                 PolicyName='bedrock_invoke_policy',
                 PolicyDocument=json.dumps(bedrock_policy)
             )
-        
+
         role_arn = role['Role']['Arn']
-        
+
         # Delete existing Lambda functions
         delete_lambda_function('bedrock_agent_researcher', aws_region)
         delete_lambda_function('bedrock_agent_writer', aws_region)
-        
+
         # Package and deploy researcher function
         researcher_zip = package_function('bedrock_agent_researcher')
         create_lambda_function(
@@ -313,7 +313,7 @@ def main():
             researcher_zip,
             aws_region
         )
-        
+
         # Package and deploy writer function
         writer_zip = package_function('bedrock_agent_writer')
         create_lambda_function(
@@ -323,7 +323,7 @@ def main():
             writer_zip,
             aws_region
         )
-        
+
         print("Deployment complete!")
     except Exception as e:
         print(f"Deployment failed: {str(e)}")
