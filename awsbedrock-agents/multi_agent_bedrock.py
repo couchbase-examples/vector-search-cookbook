@@ -388,15 +388,19 @@ def create_agent(name, instructions, functions, model_id="amazon.nova-pro-v1:0")
         logging.error(f"Error creating/updating agent: {str(e)}")
         raise RuntimeError(f"Failed to create/update agent: {str(e)}")
 
-def invoke_agent(agent_id, alias_id, input_text, session_id=None):
+def invoke_agent(agent_id, alias_id, input_text, session_id=None, runtime_client=None):
     """Invoke a Bedrock agent"""
     if session_id is None:
         session_id = str(uuid.uuid4())
+    
+    # Use provided runtime client or default to global one
+    if runtime_client is None:
+        runtime_client = bedrock_runtime_client
         
     try:
         logging.info(f"Invoking agent with input: {input_text}")
         
-        response = bedrock_runtime_client.invoke_agent(
+        response = runtime_client.invoke_agent(
             agentId=agent_id,
             agentAliasId=alias_id,
             sessionId=session_id,
@@ -405,22 +409,30 @@ def invoke_agent(agent_id, alias_id, input_text, session_id=None):
         )
         
         result = ""
-        trace_info = []
         
         # Process the streaming response
         for event in response['completion']:
             if 'chunk' in event:
                 chunk = event['chunk']['bytes'].decode('utf-8')
                 result += chunk
-                logging.info(f"Received chunk: {chunk}")
-            if 'trace' in event:
-                trace_info.append(event['trace'])
-                logging.info(f"Trace info: {event['trace']}")
+            
+            # Handle Lambda function response in trace
+            if 'trace' in event and isinstance(event['trace'], dict) and 'orchestrationTrace' in event['trace']:
+                orch_trace = event['trace']['orchestrationTrace']
+                if 'invocationOutput' in orch_trace:
+                    invocation_output = orch_trace['invocationOutput']
+                    if 'actionGroupInvocationOutput' in invocation_output:
+                        action_output = invocation_output['actionGroupInvocationOutput']
+                        if 'responseBody' in action_output:
+                            response_body = action_output['responseBody']
+                            if isinstance(response_body, dict) and 'application/json' in response_body:
+                                json_body = response_body['application/json']
+                                if 'body' in json_body:
+                                    lambda_result = json_body['body']
+                                    result = lambda_result
         
         if not result.strip():
             logging.warning("Received empty response from agent")
-            if trace_info:
-                logging.info(f"Trace information: {json.dumps(trace_info, indent=2)}")
         
         return result
         
@@ -610,21 +622,7 @@ def main():
                     
                           
 
-                    # response = bedrock_runtime_client.invoke_agent(
-                    #     agentId=embedder_id,
-                    #     agentAliasId=embedder_alias,
-                    #     sessionId=str(uuid.uuid4()),
-                    #     inputText=f'Add this document: {json.dumps(doc)}'
-                    # )
-                    
-                    # # Process streaming response
-                    # result = ""
-                    # for event in response['completion']:
-                    #     if 'chunk' in event:
-                    #         chunk = event['chunk']['bytes'].decode('utf-8')
-                    #         result += chunk
-                    
-                    # logging.info(f"Added document {i}: {result}")
+                    # Add document to vector store
                     successful_docs += 1
                     
                     # Add small delay between requests
@@ -643,211 +641,197 @@ def main():
             logging.error(f"Document loading failed: {str(e)}")
             raise ValueError(f"Failed to load documents: {str(e)}")
 
-        # Example usage
+        # Run the selected approach
         try:
-            # # Search for information using the researcher agent
-            # researcher_response = invoke_agent(
-            #     researcher_id,
-            #     researcher_alias,
-            #     'What is unique about the Cline AI assistant?'
-            # )
-            # print("Researcher Agent Response:", researcher_response)
 
-            # Try both approaches for agent action groups:
-            # 1. Custom Control (direct function calls)
-            # 2. Lambda (AWS Lambda function calls)
+            # Get the approach from environment variable or default to custom
+            approach = os.getenv("APPROACH", "custom").lower()
             
-            # Approach 1: Custom Control
-            # try:
-            #     print("\nTrying Custom Control approach...")
-            #     bedrock_agent_client.create_agent_action_group(
-            #         agentId=researcher_id,
-            #         agentVersion="DRAFT",
-            #         actionGroupExecutor={"customControl": "RETURN_CONTROL"},
-            #         actionGroupName="researcher_actions_custom",
-            #         functionSchema={"functions": [{
-            #             "name": "search_documents",
-            #             "description": "Search for relevant documents using semantic similarity",
-            #             "parameters": {
-            #                 "query": {
-            #                     "type": "string",
-            #                     "description": "The search query",
-            #                     "required": True
-            #                 },
-            #                 "k": {
-            #                     "type": "integer",
-            #                     "description": "Number of results to return",
-            #                     "required": False
-            #                 }
-            #             }
-            #         }]},
-            #         description="Action group for researcher operations"
-            #     )
-            #     logging.info("Created researcher action group")
-            #     # Prepare agent after updating action group
-            #     bedrock_agent_client.prepare_agent(agentId=researcher_id)
-            #     status = wait_for_agent_status(
-            #         researcher_id, 
-            #         target_statuses=['PREPARED', 'Available']
-            #     )
-            #     logging.info(f"Researcher agent preparation completed with status: {status}")
-            # except bedrock_agent_client.exceptions.ConflictException:
-            #     logging.info("Researcher action group already exists")
-            #     # Prepare agent even if action group exists
-            #     bedrock_agent_client.prepare_agent(agentId=researcher_id)
-            #     status = wait_for_agent_status(
-            #         researcher_id, 
-            #         target_statuses=['PREPARED', 'Available']
-            #     )
-            #     logging.info(f"Researcher agent preparation completed with status: {status}")
-
-            #     # Create action group for writer agent
-            #     bedrock_agent_client.create_agent_action_group(
-            #         agentId=writer_id,
-            #         agentVersion="DRAFT",
-            #         actionGroupExecutor={"customControl": "RETURN_CONTROL"},
-            #         actionGroupName="writer_actions_custom",
-            #         functionSchema={"functions": [{
-            #             "name": "format_content",
-            #             "description": "Format research findings in a user-friendly way",
-            #             "parameters": {
-            #                 "content": {
-            #                     "type": "string",
-            #                     "description": "The research findings to format",
-            #                     "required": True
-            #                 },
-            #                 "style": {
-            #                     "type": "string",
-            #                     "description": "The desired presentation style",
-            #                     "required": False
-            #                 }
-            #             }
-            #         }]},
-            #         description="Action group for writer operations"
-            #     )
-            #     logging.info("Created writer action group")
-            #     # Prepare agent after updating action group
-            #     bedrock_agent_client.prepare_agent(agentId=writer_id)
-            #     status = wait_for_agent_status(
-            #         writer_id, 
-            #         target_statuses=['PREPARED', 'Available']
-            #     )
-            #     logging.info(f"Writer agent preparation completed with status: {status}")
-            # except bedrock_agent_client.exceptions.ConflictException:
-            #     logging.info("Writer action group already exists")
-            #     # Prepare agent even if action group exists
-            #     bedrock_agent_client.prepare_agent(agentId=writer_id)
-            #     status = wait_for_agent_status(
-            #         writer_id, 
-            #         target_statuses=['PREPARED', 'Available']
-            #     )
-            #     logging.info(f"Writer agent preparation completed with status: {status}")
-
-            #     # Test Custom Control approach
-            #     researcher_response = invoke_agent(
-            #         researcher_id,
-            #         researcher_alias,
-            #         'What is unique about the Cline AI assistant? Use the search_documents function to find relevant information.'
-            #     )
-            #     print("Custom Control - Researcher Response:", researcher_response)
-
-            #     writer_response = invoke_agent(
-            #         writer_id,
-            #         writer_alias,
-            #         f'Format this research finding using the format_content function: {researcher_response}'
-            #     )
-            #     print("Custom Control - Writer Response:", writer_response)
-
-            print("\nTrying Custom Control approach...")
-            # Approach: Custom Control (direct function calls)
-            try:
-                bedrock_agent_client.create_agent_action_group(
-                    agentId=researcher_id,
-                    agentVersion="DRAFT",
-                    actionGroupExecutor={"customControl": "RETURN_CONTROL"},
-                    actionGroupName="researcher_actions",
-                    functionSchema={"functions": [{
-                        "name": "search_documents",
-                        "description": "Search for relevant documents using semantic similarity",
-                        "parameters": {
-                            "query": {
-                                "type": "string",
-                                "description": "The search query",
-                                "required": True
-                            },
-                            "k": {
-                                "type": "integer",
-                                "description": "Number of results to return",
-                                "required": False
-                            }
-                        }
-                    }]},
-                    description="Action group for researcher operations"
-                )
-                logging.info("Created researcher action group")
-            except bedrock_agent_client.exceptions.ConflictException:
-                logging.info("Researcher action group already exists")
+            if approach == "lambda":
+                print("\nTrying Lambda approach...")
+                # Approach: Lambda (AWS Lambda function calls)
                 
-            # Prepare researcher agent
-            logging.info("Preparing researcher agent...")
-            bedrock_agent_client.prepare_agent(agentId=researcher_id)
-            status = wait_for_agent_status(
-                researcher_id, 
-                target_statuses=['PREPARED', 'Available']
-            )
-            logging.info(f"Researcher agent preparation completed with status: {status}")
-
-            try:
-                bedrock_agent_client.create_agent_action_group(
-                    agentId=writer_id,
-                    agentVersion="DRAFT",
-                    actionGroupExecutor={"customControl": "RETURN_CONTROL"},
-                    actionGroupName="writer_actions",
-                    functionSchema={"functions": [{
-                        "name": "format_content",
-                        "description": "Format research findings in a user-friendly way",
-                        "parameters": {
-                            "content": {
-                                "type": "string",
-                                "description": "The research findings to format",
-                                "required": True
-                            },
-                            "style": {
-                                "type": "string",
-                                "description": "The desired presentation style",
-                                "required": False
-                            }
-                        }
-                    }]},
-                    description="Action group for writer operations"
-                )
-                logging.info("Created writer action group")
-            except bedrock_agent_client.exceptions.ConflictException:
-                logging.info("Writer action group already exists")
+                # Deploy Lambda functions first
+                print("Deploying Lambda functions...")
+                try:
+                    # Create a .env file for the Lambda functions with the vector store configuration
+                    with open('awsbedrock-agents/lambda_functions/.env', 'w') as f:
+                        f.write(f"CB_HOST={os.environ.get('CB_HOST', 'couchbase://localhost')}\n")
+                        f.write(f"CB_USERNAME={os.environ.get('CB_USERNAME', 'Administrator')}\n")
+                        f.write(f"CB_PASSWORD={os.environ.get('CB_PASSWORD', 'password')}\n")
+                        f.write(f"CB_BUCKET_NAME={os.environ.get('CB_BUCKET_NAME', 'vector-search-testing')}\n")
+                        f.write(f"SCOPE_NAME={os.environ.get('SCOPE_NAME', 'shared')}\n")
+                        f.write(f"COLLECTION_NAME={os.environ.get('COLLECTION_NAME', 'bedrock')}\n")
+                        f.write(f"INDEX_NAME={os.environ.get('INDEX_NAME', 'vector_search_bedrock')}\n")
+                    
+                    import subprocess
+                    subprocess.run([
+                        'python3', 
+                        'awsbedrock-agents/lambda_functions/deploy.py'
+                    ], check=True)
+                    print("Lambda functions deployed successfully")
+                except Exception as e:
+                    logging.error(f"Error deploying Lambda functions: {str(e)}")
+                    raise RuntimeError("Failed to deploy Lambda functions")
                 
-            # Prepare writer agent
-            logging.info("Preparing writer agent...")
-            bedrock_agent_client.prepare_agent(agentId=writer_id)
-            status = wait_for_agent_status(
-                writer_id, 
-                target_statuses=['PREPARED', 'Available']
-            )
-            logging.info(f"Writer agent preparation completed with status: {status}")
+                # Create action group for researcher agent with Lambda executor
+                try:
+                    bedrock_agent_client.create_agent_action_group(
+                        agentId=researcher_id,
+                        agentVersion="DRAFT",
+                        actionGroupExecutor={
+                            "lambda": f"arn:aws:lambda:{AWS_REGION}:{AWS_ACCOUNT_ID}:function:bedrock_agent_researcher"
+                        },
+                        actionGroupName="researcher_actions",
+                        functionSchema={"functions": researcher_functions},
+                        description="Action group for researcher operations with Lambda"
+                    )
+                    logging.info("Created researcher Lambda action group")
+                except bedrock_agent_client.exceptions.ConflictException:
+                    logging.info("Researcher Lambda action group already exists")
+                    
+                # Prepare researcher agent
+                logging.info("Preparing researcher agent...")
+                bedrock_agent_client.prepare_agent(agentId=researcher_id)
+                status = wait_for_agent_status(
+                    researcher_id, 
+                    target_statuses=['PREPARED', 'Available']
+                )
+                logging.info(f"Researcher agent preparation completed with status: {status}")
 
-           # Test Custom Control approach
-            researcher_response = invoke_agent(
+                # Create action group for writer agent with Lambda executor
+                try:
+                    bedrock_agent_client.create_agent_action_group(
+                        agentId=writer_id,
+                        agentVersion="DRAFT",
+                        actionGroupExecutor={
+                            "lambda": f"arn:aws:lambda:{AWS_REGION}:{AWS_ACCOUNT_ID}:function:bedrock_agent_writer"
+                        },
+                        actionGroupName="writer_actions",
+                        functionSchema={"functions": writer_functions},
+                        description="Action group for writer operations with Lambda"
+                    )
+                    logging.info("Created writer Lambda action group")
+                except bedrock_agent_client.exceptions.ConflictException:
+                    logging.info("Writer Lambda action group already exists")
+                    
+                # Prepare writer agent
+                logging.info("Preparing writer agent...")
+                bedrock_agent_client.prepare_agent(agentId=writer_id)
+                status = wait_for_agent_status(
+                    writer_id, 
+                    target_statuses=['PREPARED', 'Available']
+                )
+                logging.info(f"Writer agent preparation completed with status: {status}")
+
+                # Test Lambda approach
+                researcher_response = invoke_agent(
+                    bedrock_runtime_client,
                     researcher_id,
                     researcher_alias,
                     'What is unique about the Cline AI assistant? Use the search_documents function to find relevant information.'
                 )
-            print("Custom Control - Researcher Response:", researcher_response)
+                print("Lambda - Researcher Response:", researcher_response)
 
-            writer_response = invoke_agent(
+                writer_response = invoke_agent(
+                    bedrock_runtime_client,
                     writer_id,
                     writer_alias,
                     f'Format this research finding using the format_content function: {researcher_response}'
                 )
-            print("Custom Control - Writer Response:", writer_response)
+                print("Lambda - Writer Response:", writer_response)
+                
+            else:
+                print("\nTrying Custom Control approach...")
+                # Approach: Custom Control (direct function calls)
+                try:
+                    bedrock_agent_client.create_agent_action_group(
+                        agentId=researcher_id,
+                        agentVersion="DRAFT",
+                        actionGroupExecutor={"customControl": "RETURN_CONTROL"},
+                        actionGroupName="researcher_actions",
+                        functionSchema={"functions": [{
+                            "name": "search_documents",
+                            "description": "Search for relevant documents using semantic similarity",
+                            "parameters": {
+                                "query": {
+                                    "type": "string",
+                                    "description": "The search query",
+                                    "required": True
+                                },
+                                "k": {
+                                    "type": "integer",
+                                    "description": "Number of results to return",
+                                    "required": False
+                                }
+                            }
+                        }]},
+                        description="Action group for researcher operations"
+                    )
+                    logging.info("Created researcher action group")
+                except bedrock_agent_client.exceptions.ConflictException:
+                    logging.info("Researcher action group already exists")
+                    
+                # Prepare researcher agent
+                logging.info("Preparing researcher agent...")
+                bedrock_agent_client.prepare_agent(agentId=researcher_id)
+                status = wait_for_agent_status(
+                    researcher_id, 
+                    target_statuses=['PREPARED', 'Available']
+                )
+                logging.info(f"Researcher agent preparation completed with status: {status}")
+
+                try:
+                    bedrock_agent_client.create_agent_action_group(
+                        agentId=writer_id,
+                        agentVersion="DRAFT",
+                        actionGroupExecutor={"customControl": "RETURN_CONTROL"},
+                        actionGroupName="writer_actions",
+                        functionSchema={"functions": [{
+                            "name": "format_content",
+                            "description": "Format research findings in a user-friendly way",
+                            "parameters": {
+                                "content": {
+                                    "type": "string",
+                                    "description": "The research findings to format",
+                                    "required": True
+                                },
+                                "style": {
+                                    "type": "string",
+                                    "description": "The desired presentation style",
+                                    "required": False
+                                }
+                            }
+                        }]},
+                        description="Action group for writer operations"
+                    )
+                    logging.info("Created writer action group")
+                except bedrock_agent_client.exceptions.ConflictException:
+                    logging.info("Writer action group already exists")
+                    
+                # Prepare writer agent
+                logging.info("Preparing writer agent...")
+                bedrock_agent_client.prepare_agent(agentId=writer_id)
+                status = wait_for_agent_status(
+                    writer_id, 
+                    target_statuses=['PREPARED', 'Available']
+                )
+                logging.info(f"Writer agent preparation completed with status: {status}")
+
+                # Test Custom Control approach
+                researcher_response = invoke_agent(
+                    researcher_id,
+                    researcher_alias,
+                    'What is unique about the Cline AI assistant? Use the search_documents function to find relevant information.'
+                )
+                print("Custom Control - Researcher Response:", researcher_response)
+
+                writer_response = invoke_agent(
+                    writer_id,
+                    writer_alias,
+                    f'Format this research finding using the format_content function: {researcher_response}'
+                )
+                print("Custom Control - Writer Response:", writer_response)
             
         except Exception as e:
             print(f"Error: {str(e)}")
