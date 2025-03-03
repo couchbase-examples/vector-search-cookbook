@@ -19,7 +19,8 @@ from langchain_couchbase.vectorstores import CouchbaseVectorStore
 
 # Import the approach modules
 from age_custom_control import run_custom_control_approach
-from age_lamda import run_lambda_approach
+from age_lambda import run_lambda_approach
+from utils import search_documents, add_document, initialize_vector_store
 
 # Setup logging
 logging.basicConfig(level=logging.INFO, format='%(asctime)s - %(levelname)s - %(message)s')
@@ -125,7 +126,7 @@ def setup_collection(cluster, bucket_name, scope_name, collection_name):
     
 def setup_indexes(cluster):
     try:
-        with open('awsbedrock-agents/aws_index.json', 'r') as file:
+        with open(os.path.join(os.path.dirname(__file__), 'aws_index.json'), 'r') as file:
             index_definition = json.load(file)
     except Exception as e:
         raise ValueError(f"Error loading index definition: {str(e)}")
@@ -157,20 +158,7 @@ def setup_indexes(cluster):
         logging.error(f"Internal server error: {str(e)}")
         raise
 
-def add_document(vector_store, text, metadata=None):
-    """Add a document to the vector store"""
-    if metadata is None:
-        metadata = {}
-    elif isinstance(metadata, str):
-        try:
-            metadata = json.loads(metadata)
-        except json.JSONDecodeError:
-            metadata = {}
-    return vector_store.add_texts([text], [metadata])[0]
-
-def search_documents(vector_store, query, k=4):
-    """Search for similar documents"""
-    return vector_store.similarity_search(query, k=k)
+# Functions moved to utils.py
 
 def main():
     try:
@@ -197,7 +185,6 @@ def main():
         logging.info("Successfully created Bedrock embeddings client")
         
         # Initialize vector store
-        global vector_store
         vector_store = CouchbaseVectorStore(
             cluster=cluster,
             bucket_name=CB_BUCKET_NAME,
@@ -206,11 +193,13 @@ def main():
             embedding=embeddings,
             index_name=INDEX_NAME
         )
+        # Initialize the vector store in utils.py
+        initialize_vector_store(vector_store)
         logging.info("Successfully created vector store")
 
         # Load documents from JSON file
         try:
-            with open('awsbedrock-agents/documents.json', 'r') as f:
+            with open(os.path.join(os.path.dirname(__file__), 'documents.json'), 'r') as f:
                 data = json.load(f)
                 documents = data.get('documents', [])
                 

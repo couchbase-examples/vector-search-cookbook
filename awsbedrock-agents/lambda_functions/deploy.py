@@ -28,7 +28,7 @@ def delete_lambda_function(function_name, aws_region):
 
         # Wait for deletion to complete
         print(f"Waiting for {function_name} to be deleted...")
-        time.sleep(10)
+        time.sleep(20)  # Doubled from 10
 
         return True
     except lambda_client.exceptions.ResourceNotFoundException:
@@ -37,6 +37,95 @@ def delete_lambda_function(function_name, aws_region):
     except Exception as e:
         print(f"Error deleting Lambda function {function_name}: {str(e)}")
         return False
+
+
+
+def create_lambda_function(function_name, handler, role_arn, zip_file, aws_region):
+    """Create or update Lambda function"""
+
+    # Configure the client with increased timeouts
+    config = Config(
+        connect_timeout=60,  # Doubled from 30 seconds
+        read_timeout=120,    # Doubled from 60 seconds
+        retries={'max_attempts': 3}
+    )
+
+    lambda_client = boto3.client('lambda', region_name=aws_region, config=config)
+
+    # Wait for role to be ready
+    print(f"Waiting for role {role_arn} to be ready...")
+    time.sleep(20)  # Doubled from 10 - IAM role propagation delay
+
+    # Create new function
+    print(f"Creating function {function_name}...")
+    try:
+        with open(zip_file, 'rb') as f:
+            zip_content = f.read()
+            zip_size_mb = len(zip_content) / (1024 * 1024)
+            print(f"Zip file size: {zip_size_mb:.2f} MB")
+
+            # If zip file is larger than 50MB upload to S3 first
+            if zip_size_mb > 50:
+                print("Zip file is larger than 50MB. Uploading to S3 first...")
+                s3_location = upload_to_s3(zip_file, aws_region)
+
+                lambda_client.create_function(
+                    FunctionName=function_name,
+                    Runtime='python3.9',
+                    Role=role_arn,
+                    Handler=handler,
+                    Code=s3_location,
+                    Timeout=120,  # Doubled from 60
+                    MemorySize=1024,  # Doubled from 512
+                    Environment={
+                        'Variables': {
+                            'CB_HOST': os.getenv('CB_HOST', 'couchbase://localhost'),
+                            'CB_USERNAME': os.getenv('CB_USERNAME', 'Administrator'),
+                            'CB_PASSWORD': os.getenv('CB_PASSWORD', 'password'),
+                            'CB_BUCKET_NAME': os.getenv('CB_BUCKET_NAME', 'vector-search-testing'),
+                            'SCOPE_NAME': os.getenv('SCOPE_NAME', 'shared'),
+                            'COLLECTION_NAME': os.getenv('COLLECTION_NAME', 'bedrock'),
+                            'INDEX_NAME': os.getenv('INDEX_NAME', 'vector_search_bedrock')
+                        }
+                    }
+                )
+            else:
+                # For smaller files use direct upload
+                lambda_client.create_function(
+                    FunctionName=function_name,
+                    Runtime='python3.9',
+                    Role=role_arn,
+                    Handler=handler,
+                    Code={'ZipFile': zip_content},
+                    Timeout=120,  # Doubled from 60
+                    MemorySize=1024,  # Doubled from 512
+                    Environment={
+                        'Variables': {
+                            'CB_HOST': os.getenv('CB_HOST', 'couchbase://localhost'),
+                            'CB_USERNAME': os.getenv('CB_USERNAME', 'Administrator'),
+                            'CB_PASSWORD': os.getenv('CB_PASSWORD', 'password'),
+                            'CB_BUCKET_NAME': os.getenv('CB_BUCKET_NAME', 'vector-search-testing'),
+                            'SCOPE_NAME': os.getenv('SCOPE_NAME', 'shared'),
+                            'COLLECTION_NAME': os.getenv('COLLECTION_NAME', 'bedrock'),
+                            'INDEX_NAME': os.getenv('INDEX_NAME', 'vector_search_bedrock')
+                        }
+                    }
+                )
+    except ConnectionClosedError as e:
+        print(f"Connection closed error: {str(e)}")
+        raise
+    except ServiceNotInRegionError as e:
+        print(f"Service not in region: {str(e)}")
+        raise
+    except ClientError as e:
+        print(f"Client error: {str(e)}")
+        raise
+    except Exception as e:
+        print(f"Error creating Lambda function: {str(e)}")
+        if "Connection was closed" in str(e):
+            print("Connection issue detected. This might be due to a large payload or network issues.")
+            print("Consider uploading the Lambda code to S3 first and then creating the function from S3.")
+        raise
 
 def upload_to_s3(zip_file, aws_region, bucket_name=None):
     """Upload zip file to S3 and return S3 location"""
@@ -83,93 +172,6 @@ def upload_to_s3(zip_file, aws_region, bucket_name=None):
         'S3Bucket': bucket_name,
         'S3Key': key
     }
-
-def create_lambda_function(function_name, handler, role_arn, zip_file, aws_region):
-    """Create or update Lambda function"""
-
-    # Configure the client with increased timeouts
-    config = Config(
-        connect_timeout=30,  # 30 seconds
-        read_timeout=60,     # 60 seconds
-        retries={'max_attempts': 3}
-    )
-
-    lambda_client = boto3.client('lambda', region_name=aws_region, config=config)
-
-    # Wait for role to be ready
-    print(f"Waiting for role {role_arn} to be ready...")
-    time.sleep(10)  # IAM role propagation delay
-
-    # Create new function
-    print(f"Creating function {function_name}...")
-    try:
-        with open(zip_file, 'rb') as f:
-            zip_content = f.read()
-            zip_size_mb = len(zip_content) / (1024 * 1024)
-            print(f"Zip file size: {zip_size_mb:.2f} MB")
-
-            # If zip file is larger than 50MB upload to S3 first
-            if zip_size_mb > 50:
-                print("Zip file is larger than 50MB. Uploading to S3 first...")
-                s3_location = upload_to_s3(zip_file, aws_region)
-
-                lambda_client.create_function(
-                    FunctionName=function_name,
-                    Runtime='python3.9',
-                    Role=role_arn,
-                    Handler=handler,
-                    Code=s3_location,
-                    Timeout=60,  # Increased timeout
-                    MemorySize=512,  # Increased memory
-                    Environment={
-                        'Variables': {
-                            'CB_HOST': os.getenv('CB_HOST', 'couchbase://localhost'),
-                            'CB_USERNAME': os.getenv('CB_USERNAME', 'Administrator'),
-                            'CB_PASSWORD': os.getenv('CB_PASSWORD', 'password'),
-                            'CB_BUCKET_NAME': os.getenv('CB_BUCKET_NAME', 'vector-search-testing'),
-                            'SCOPE_NAME': os.getenv('SCOPE_NAME', 'shared'),
-                            'COLLECTION_NAME': os.getenv('COLLECTION_NAME', 'bedrock'),
-                            'INDEX_NAME': os.getenv('INDEX_NAME', 'vector_search_bedrock')
-                        }
-                    }
-                )
-            else:
-                # For smaller files use direct upload
-                lambda_client.create_function(
-                    FunctionName=function_name,
-                    Runtime='python3.9',
-                    Role=role_arn,
-                    Handler=handler,
-                    Code={'ZipFile': zip_content},
-                    Timeout=60,  # Increased timeout
-                    MemorySize=512,  # Increased memory
-                    Environment={
-                        'Variables': {
-                            'CB_HOST': os.getenv('CB_HOST', 'couchbase://localhost'),
-                            'CB_USERNAME': os.getenv('CB_USERNAME', 'Administrator'),
-                            'CB_PASSWORD': os.getenv('CB_PASSWORD', 'password'),
-                            'CB_BUCKET_NAME': os.getenv('CB_BUCKET_NAME', 'vector-search-testing'),
-                            'SCOPE_NAME': os.getenv('SCOPE_NAME', 'shared'),
-                            'COLLECTION_NAME': os.getenv('COLLECTION_NAME', 'bedrock'),
-                            'INDEX_NAME': os.getenv('INDEX_NAME', 'vector_search_bedrock')
-                        }
-                    }
-                )
-    except ConnectionClosedError as e:
-        print(f"Connection closed error: {str(e)}")
-        raise
-    except ServiceNotInRegionError as e:
-        print(f"Service not in region: {str(e)}")
-        raise
-    except ClientError as e:
-        print(f"Client error: {str(e)}")
-        raise
-    except Exception as e:
-        print(f"Error creating Lambda function: {str(e)}")
-        if "Connection was closed" in str(e):
-            print("Connection issue detected. This might be due to a large payload or network issues.")
-            print("Consider uploading the Lambda code to S3 first and then creating the function from S3.")
-        raise
 
 def package_function(function_name):
     """Package Lambda function with dependencies"""

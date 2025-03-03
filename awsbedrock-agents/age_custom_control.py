@@ -1,7 +1,11 @@
-import json
 import logging
+import os
+import sys
 import time
 import uuid
+
+# Import from utils.py instead of main.py to avoid circular imports
+from utils import search_documents, vector_store
 
 def create_agent(bedrock_agent_client, name, instructions, functions, model_id="amazon.nova-pro-v1:0"):
     """Create a Bedrock agent with Custom Control action groups"""
@@ -193,20 +197,15 @@ def invoke_agent(bedrock_runtime_client, agent_id, alias_id, input_text, session
                         k = int(param_dict.get('k', 3))
                         
                         print(f"Searching for: {query}, k={k}")
-                        
-                        # Import the search_documents function from main_script
-                        import sys
-                        import os
                         sys.path.append(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
-                        from main_script import search_documents
                         
-                        # If vector_store is not provided, try to get it from main_script
+                        # If vector_store is not provided, use the one from utils
                         if vector_store is None:
                             try:
-                                from main_script import vector_store as vs
+                                from utils import vector_store as vs
                                 vector_store = vs
                             except ImportError:
-                                print("Could not import vector_store from main_script")
+                                print("Could not import vector_store from utils")
                         
                         if vector_store:
                             # Perform the search

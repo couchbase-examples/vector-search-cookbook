@@ -121,25 +121,90 @@ def invoke_agent(bedrock_runtime_client, agent_id, alias_id, input_text, session
         result = ""
         
         # Process the streaming response
-        for event in response['completion']:
+        print("\n--- DEBUGGING AGENT RESPONSE ---")
+        print(f"Response keys: {response.keys()}")
+        
+        # Store all trace events for later processing
+        all_traces = []
+        return_control_events = []
+        
+        for i, event in enumerate(response['completion']):
+            print(f"Event {i} keys: {event.keys()}")
+            
             if 'chunk' in event:
                 chunk = event['chunk']['bytes'].decode('utf-8')
                 result += chunk
+                print(f"Chunk content: {chunk}")
             
-            # Handle Lambda function response in trace
-            if 'trace' in event and isinstance(event['trace'], dict) and 'orchestrationTrace' in event['trace']:
-                orch_trace = event['trace']['orchestrationTrace']
-                if 'invocationOutput' in orch_trace:
-                    invocation_output = orch_trace['invocationOutput']
-                    if 'actionGroupInvocationOutput' in invocation_output:
-                        action_output = invocation_output['actionGroupInvocationOutput']
-                        if 'responseBody' in action_output:
-                            response_body = action_output['responseBody']
-                            if isinstance(response_body, dict) and 'application/json' in response_body:
-                                json_body = response_body['application/json']
-                                if 'body' in json_body:
-                                    lambda_result = json_body['body']
-                                    result = lambda_result
+            if 'trace' in event:
+                print(f"Trace found in event {i}")
+                all_traces.append(event['trace'])
+            
+            if 'returnControl' in event:
+                print(f"Return Control Event: {event['returnControl']}")
+                return_control_events.append(event['returnControl'])
+        
+        # After processing all events, check if we have a return control event but no result
+        if not result.strip() and return_control_events:
+            # Try to get the Lambda function ARN from the return control event
+            for rc_event in return_control_events:
+                if 'invocationInputs' in rc_event:
+                    for input_item in rc_event['invocationInputs']:
+                        if 'functionInvocationInput' in input_item:
+                            func_input = input_item['functionInvocationInput']
+                            action_group = func_input.get('actionGroup')
+                            function_name = func_input.get('function')
+                            
+                            # Get parameters
+                            parameters = {}
+                            for param in func_input.get('parameters', []):
+                                parameters[param.get('name')] = param.get('value')
+                            
+                            print(f"Function call: {action_group}::{function_name}")
+                            print(f"Parameters: {parameters}")
+                            
+                            # For researcher agent, manually call the Lambda function
+                            if action_group == 'researcher_actions' and function_name == 'search_documents':
+                                query = parameters.get('query')
+                                k = int(parameters.get('k', 3))
+                                
+                                if query and query != '?':
+                                    print(f"Manually searching for: {query}, k={k}")
+                                    
+                                    # Import the search_documents function from utils
+                                    from utils import search_documents, vector_store
+                                    
+                                    if vector_store:
+                                        # Perform the search
+                                        docs = search_documents(vector_store, query, k)
+                                        
+                                        # Format results
+                                        search_results = [doc.page_content for doc in docs]
+                                        
+                                        print(f"Found {len(search_results)} results")
+                                        for i, content in enumerate(search_results):
+                                            print(f"Result {i+1}: {content[:100]}...")
+                                        
+                                        # Format the response
+                                        result = f"Search results for '{query}':\n\n"
+                                        for i, content in enumerate(search_results):
+                                            result += f"Result {i+1}: {content}\n\n"
+                                    else:
+                                        print("Vector store not available")
+                                        result = "Error: Vector store not available"
+                            
+                            # For writer agent, manually format the content
+                            elif action_group == 'writer_actions' and function_name == 'format_content':
+                                content = parameters.get('content')
+                                style = parameters.get('style', 'user-friendly')
+                                
+                                if content and content != '?':
+                                    print(f"Manually formatting content in {style} style")
+                                    result = f"Formatted in {style} style: {content}"
+                                else:
+                                    result = "No content provided to format."
+        
+        print("--- END DEBUGGING ---\n")
             
             
         
