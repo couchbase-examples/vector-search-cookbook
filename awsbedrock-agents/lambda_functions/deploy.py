@@ -41,42 +41,56 @@ def delete_lambda_function(function_name, aws_region):
 
 
 def create_lambda_function(function_name, handler, role_arn, zip_file, aws_region):
-    """Create or update Lambda function"""
+    """Create or update Lambda function with retry logic"""
 
     # Configure the client with increased timeouts
     config = Config(
-        connect_timeout=60,  # Doubled from 30 seconds
-        read_timeout=120,    # Doubled from 60 seconds
-        retries={'max_attempts': 3}
+        connect_timeout=120,  # Increased to 2 minutes
+        read_timeout=300,     # Increased to 5 minutes
+        retries={
+            'max_attempts': 5,
+            'mode': 'adaptive'  # Use adaptive retry mode for better handling of throttling
+        }
     )
 
     lambda_client = boto3.client('lambda', region_name=aws_region, config=config)
 
     # Wait for role to be ready
     print(f"Waiting for role {role_arn} to be ready...")
-    time.sleep(20)  # Doubled from 10 - IAM role propagation delay
+    time.sleep(30)  # Increased to 30 seconds for IAM role propagation
 
-    # Create new function
-    print(f"Creating function {function_name}...")
-    try:
-        with open(zip_file, 'rb') as f:
-            zip_content = f.read()
-            zip_size_mb = len(zip_content) / (1024 * 1024)
-            print(f"Zip file size: {zip_size_mb:.2f} MB")
+    # Get zip file size
+    with open(zip_file, 'rb') as f:
+        zip_content = f.read()
+        zip_size_mb = len(zip_content) / (1024 * 1024)
+        print(f"Zip file size: {zip_size_mb:.2f} MB")
 
-            # If zip file is larger than 50MB upload to S3 first
-            if zip_size_mb > 50:
-                print("Zip file is larger than 50MB. Uploading to S3 first...")
-                s3_location = upload_to_s3(zip_file, aws_region)
-
+    # Always use S3 for deployment if file is larger than 10MB
+    # This helps avoid connection timeouts with direct uploads
+    use_s3 = zip_size_mb > 10
+    
+    if use_s3:
+        print(f"File size ({zip_size_mb:.2f} MB) exceeds 10MB. Using S3 for deployment...")
+        s3_location = upload_to_s3(zip_file, aws_region)
+    
+    # Retry logic with exponential backoff
+    max_retries = 5
+    base_delay = 5  # Start with 5 seconds delay
+    
+    for attempt in range(1, max_retries + 1):
+        try:
+            print(f"Creating function {function_name} (attempt {attempt}/{max_retries})...")
+            
+            if use_s3:
+                # Deploy from S3
                 lambda_client.create_function(
                     FunctionName=function_name,
                     Runtime='python3.9',
                     Role=role_arn,
                     Handler=handler,
                     Code=s3_location,
-                    Timeout=120,  # Doubled from 60
-                    MemorySize=1024,  # Doubled from 512
+                    Timeout=180,  # Increased to 3 minutes
+                    MemorySize=1536,  # Increased to 1.5GB
                     Environment={
                         'Variables': {
                             'CB_HOST': os.getenv('CB_HOST', 'couchbase://localhost'),
@@ -90,15 +104,15 @@ def create_lambda_function(function_name, handler, role_arn, zip_file, aws_regio
                     }
                 )
             else:
-                # For smaller files use direct upload
+                # Direct upload for smaller files
                 lambda_client.create_function(
                     FunctionName=function_name,
                     Runtime='python3.9',
                     Role=role_arn,
                     Handler=handler,
                     Code={'ZipFile': zip_content},
-                    Timeout=120,  # Doubled from 60
-                    MemorySize=1024,  # Doubled from 512
+                    Timeout=180,  # Increased to 3 minutes
+                    MemorySize=1536,  # Increased to 1.5GB
                     Environment={
                         'Variables': {
                             'CB_HOST': os.getenv('CB_HOST', 'couchbase://localhost'),
@@ -111,67 +125,144 @@ def create_lambda_function(function_name, handler, role_arn, zip_file, aws_regio
                         }
                     }
                 )
-    except ConnectionClosedError as e:
-        print(f"Connection closed error: {str(e)}")
-        raise
-    except ServiceNotInRegionError as e:
-        print(f"Service not in region: {str(e)}")
-        raise
-    except ClientError as e:
-        print(f"Client error: {str(e)}")
-        raise
-    except Exception as e:
-        print(f"Error creating Lambda function: {str(e)}")
-        if "Connection was closed" in str(e):
-            print("Connection issue detected. This might be due to a large payload or network issues.")
-            print("Consider uploading the Lambda code to S3 first and then creating the function from S3.")
-        raise
+            
+            print(f"Successfully created function {function_name} on attempt {attempt}")
+            return  # Success, exit the retry loop
+            
+        except ConnectionClosedError as e:
+            print(f"Connection closed error on attempt {attempt}: {str(e)}")
+            if attempt < max_retries:
+                # Calculate exponential backoff delay with jitter
+                delay = base_delay * (2 ** (attempt - 1)) + (uuid.uuid4().int % 10)
+                print(f"Retrying in {delay} seconds...")
+                time.sleep(delay)
+                
+                # If direct upload failed, switch to S3 for next attempt
+                if not use_s3:
+                    print("Switching to S3 deployment for next attempt...")
+                    use_s3 = True
+                    s3_location = upload_to_s3(zip_file, aws_region)
+            else:
+                print("Maximum retry attempts reached. Deployment failed.")
+                raise
+                
+        except (ServiceNotInRegionError, ClientError) as e:
+            print(f"AWS service error on attempt {attempt}: {str(e)}")
+            if attempt < max_retries:
+                delay = base_delay * (2 ** (attempt - 1))
+                print(f"Retrying in {delay} seconds...")
+                time.sleep(delay)
+            else:
+                print("Maximum retry attempts reached. Deployment failed.")
+                raise
+                
+        except Exception as e:
+            print(f"Unexpected error on attempt {attempt}: {str(e)}")
+            if "Connection was closed" in str(e) and attempt < max_retries:
+                delay = base_delay * (2 ** (attempt - 1))
+                print(f"Connection issue detected. Retrying in {delay} seconds...")
+                time.sleep(delay)
+                
+                # Switch to S3 deployment for next attempt
+                if not use_s3:
+                    print("Switching to S3 deployment for next attempt...")
+                    use_s3 = True
+                    s3_location = upload_to_s3(zip_file, aws_region)
+            else:
+                print("Error creating Lambda function. Deployment failed.")
+                raise
 
 def upload_to_s3(zip_file, aws_region, bucket_name=None):
-    """Upload zip file to S3 and return S3 location"""
-    s3_client = boto3.client('s3', region_name=aws_region)
+    """Upload zip file to S3 with retry logic and return S3 location"""
+    # Configure the client with increased timeouts
+    config = Config(
+        connect_timeout=60,
+        read_timeout=120,
+        retries={'max_attempts': 3, 'mode': 'adaptive'}
+    )
+    
+    s3_client = boto3.client('s3', region_name=aws_region, config=config)
+    sts_client = boto3.client('sts', region_name=aws_region, config=config)
 
     # Create bucket if it doesn't exist
     if bucket_name is None:
         # Generate a unique bucket name
-        account_id = boto3.client('sts').get_caller_identity().get('Account')
-        bucket_name = f"lambda-deployment-{account_id}-{aws_region}"
-
-    try:
-        s3_client.head_bucket(Bucket=bucket_name)
-        print(f"Using existing S3 bucket: {bucket_name}")
-    except Exception:
         try:
-            if aws_region == 'us-east-1':
-                s3_client.create_bucket(Bucket=bucket_name)
-            else:
-                s3_client.create_bucket(
-                    Bucket=bucket_name,
-                    CreateBucketConfiguration={'LocationConstraint': aws_region}
-                )
-            print(f"Created S3 bucket: {bucket_name}")
+            account_id = sts_client.get_caller_identity().get('Account')
+            timestamp = int(time.time())
+            bucket_name = f"lambda-deployment-{account_id}-{timestamp}"
         except Exception as e:
-            print(f"Error creating S3 bucket: {str(e)}")
-            # Try with a more unique name
-            bucket_name = f"lambda-deployment-{account_id}-{aws_region}-{uuid.uuid4().hex[:8]}"
-            if aws_region == 'us-east-1':
-                s3_client.create_bucket(Bucket=bucket_name)
-            else:
-                s3_client.create_bucket(
-                    Bucket=bucket_name,
-                    CreateBucketConfiguration={'LocationConstraint': aws_region}
+            print(f"Error getting account ID: {str(e)}")
+            # Fallback to a random name
+            bucket_name = f"lambda-deployment-{uuid.uuid4().hex[:12]}"
+
+    # Retry bucket creation with exponential backoff
+    max_retries = 3
+    for attempt in range(1, max_retries + 1):
+        try:
+            try:
+                s3_client.head_bucket(Bucket=bucket_name)
+                print(f"Using existing S3 bucket: {bucket_name}")
+            except Exception:
+                print(f"Creating S3 bucket: {bucket_name} (attempt {attempt}/{max_retries})...")
+                try:
+                    if aws_region == 'us-east-1':
+                        s3_client.create_bucket(Bucket=bucket_name)
+                    else:
+                        s3_client.create_bucket(
+                            Bucket=bucket_name,
+                            CreateBucketConfiguration={'LocationConstraint': aws_region}
+                        )
+                    print(f"Created S3 bucket: {bucket_name}")
+                    
+                    # Wait for bucket to be available
+                    print("Waiting for bucket to be available...")
+                    waiter = s3_client.get_waiter('bucket_exists')
+                    waiter.wait(Bucket=bucket_name)
+                except Exception as e:
+                    print(f"Error creating bucket: {str(e)}")
+                    if attempt < max_retries:
+                        # Try with a more unique name
+                        bucket_name = f"lambda-deployment-{uuid.uuid4().hex}"
+                        continue
+                    else:
+                        raise
+            
+            # Upload zip file to S3 with retry logic
+            key = f"lambda/{os.path.basename(zip_file)}-{uuid.uuid4().hex[:8]}"
+            print(f"Uploading {zip_file} to S3 bucket {bucket_name}...")
+            
+            # Use multipart upload for large files
+            file_size = os.path.getsize(zip_file)
+            if file_size > 100 * 1024 * 1024:  # 100 MB
+                print("Using multipart upload for large file...")
+                transfer_config = boto3.s3.transfer.TransferConfig(
+                    multipart_threshold=8 * 1024 * 1024,  # 8 MB
+                    max_concurrency=10,
+                    multipart_chunksize=8 * 1024 * 1024,  # 8 MB
+                    use_threads=True
                 )
-            print(f"Created S3 bucket with unique name: {bucket_name}")
-
-    # Upload zip file to S3
-    key = f"lambda/{os.path.basename(zip_file)}"
-    s3_client.upload_file(zip_file, bucket_name, key)
-    print(f"Uploaded {zip_file} to s3://{bucket_name}/{key}")
-
-    return {
-        'S3Bucket': bucket_name,
-        'S3Key': key
-    }
+                s3_transfer = boto3.s3.transfer.S3Transfer(client=s3_client, config=transfer_config)
+                s3_transfer.upload_file(zip_file, bucket_name, key)
+            else:
+                s3_client.upload_file(zip_file, bucket_name, key)
+                
+            print(f"Successfully uploaded {zip_file} to s3://{bucket_name}/{key}")
+            
+            return {
+                'S3Bucket': bucket_name,
+                'S3Key': key
+            }
+            
+        except Exception as e:
+            print(f"S3 operation failed on attempt {attempt}: {str(e)}")
+            if attempt < max_retries:
+                delay = 2 ** (attempt - 1)
+                print(f"Retrying in {delay} seconds...")
+                time.sleep(delay)
+            else:
+                print("Maximum retry attempts reached. S3 upload failed.")
+                raise
 
 def package_function(function_name):
     """Package Lambda function with dependencies"""
@@ -237,15 +328,24 @@ def main():
 
         aws_region = os.getenv('AWS_REGION', 'us-east-1')
 
+        # Configure the client with increased timeouts
+        config = Config(
+            connect_timeout=60,
+            read_timeout=120,
+            retries={'max_attempts': 3, 'mode': 'adaptive'}
+        )
+
         # Initialize AWS clients
-        iam = boto3.client('iam', region_name=aws_region)
+        iam = boto3.client('iam', region_name=aws_region, config=config)
 
         # Create IAM role for Lambda
         role_name = 'bedrock_agent_lambda_role'
 
         try:
             role = iam.get_role(RoleName=role_name)
+            print(f"Using existing IAM role: {role_name}")
         except iam.exceptions.NoSuchEntityException:
+            print(f"Creating new IAM role: {role_name}")
             # Create role
             trust_policy = {
                 "Version": "2012-10-17",
@@ -262,12 +362,14 @@ def main():
             )
 
             # Attach basic Lambda execution policy
+            print("Attaching Lambda execution policy...")
             iam.attach_role_policy(
                 RoleName=role_name,
                 PolicyArn='arn:aws:iam::aws:policy/service-role/AWSLambdaBasicExecutionRole'
             )
 
             # Attach Bedrock invoke policy
+            print("Attaching Bedrock invoke policy...")
             bedrock_policy = {
                 "Version": "2012-10-17",
                 "Statement": [
@@ -278,7 +380,10 @@ def main():
                             "bedrock-runtime:InvokeModel",
                             "bedrock-agent:*",
                             "bedrock-agent-runtime:*",
-                            "lambda:InvokeFunction"
+                            "lambda:InvokeFunction",
+                            "s3:GetObject",
+                            "s3:PutObject",
+                            "s3:ListBucket"
                         ],
                         "Resource": "*"
                     },
@@ -299,6 +404,10 @@ def main():
                 PolicyName='bedrock_invoke_policy',
                 PolicyDocument=json.dumps(bedrock_policy)
             )
+            
+            # Wait for role policies to propagate
+            print("Waiting for IAM role policies to propagate...")
+            time.sleep(15)
 
         role_arn = role['Role']['Arn']
 
@@ -307,6 +416,7 @@ def main():
         delete_lambda_function('bedrock_agent_writer', aws_region)
 
         # Package and deploy researcher function
+        print("\n=== Deploying researcher function ===")
         researcher_zip = package_function('bedrock_agent_researcher')
         create_lambda_function(
             'bedrock_agent_researcher',
@@ -317,6 +427,7 @@ def main():
         )
 
         # Package and deploy writer function
+        print("\n=== Deploying writer function ===")
         writer_zip = package_function('bedrock_agent_writer')
         create_lambda_function(
             'bedrock_agent_writer',
@@ -326,7 +437,7 @@ def main():
             aws_region
         )
 
-        print("Deployment complete!")
+        print("\nDeployment complete!")
     except Exception as e:
         print(f"Deployment failed: {str(e)}")
         raise
