@@ -10,7 +10,6 @@ description:
 content_type: tutorial
 filter: sdk
 technology:
-  - agents
   - vector search
 tags:
   - Artificial Intelligence
