@@ -15,8 +15,6 @@ technology:
 tags:
   - Artificial Intelligence
   - Amazon Bedrock
-  - Agents
-  - Multi-agent Systems
 sdk_language:
   - python
 length: 90 Mins
