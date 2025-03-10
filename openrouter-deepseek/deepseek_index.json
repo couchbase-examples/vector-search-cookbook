@@ -1,6 +1,6 @@
 {
     "type": "fulltext-index",
-    "name": "vector_search_jina",
+    "name": "vector_search_deepseek",
     "uuid": "12fe1360b64a69c0",
     "sourceType": "gocbcore",
     "sourceName": "vector-search-testing",
@@ -31,7 +31,7 @@
         "store_dynamic": false,
         "type_field": "_type",
         "types": {
-          "shared.jina": {
+          "shared.deepseek": {
             "dynamic": true,
             "enabled": true,
             "properties": {
@@ -40,7 +40,7 @@
                 "enabled": true,
                 "fields": [
                   {
-                    "dims": 1024,
+                    "dims": 1536,
                     "index": true,
                     "name": "embedding",
                     "similarity": "dot_product",
@@ -71,4 +71,4 @@
       }
     },
     "sourceParams": {}
-  }
+}
