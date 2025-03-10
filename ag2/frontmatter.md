@@ -11,7 +11,6 @@ content_type: tutorial
 filter: sdk
 technology:
   - vector search
-  - retrieval-augmented generation  
 tags:
   - Artificial Intelligence
 sdk_language:
