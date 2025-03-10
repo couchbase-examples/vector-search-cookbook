@@ -1,0 +1,20 @@
+---
+# frontmatter
+path: "/tutorial-couchbase-ag2-rag"
+title: Build a RAG Application with Couchbase and AG2
+short_title: RAG with Couchbase & AG2
+description:
+  - Learn how Couchbase and AG2 simplify RAG applications  
+  - Store and retrieve document embeddings with Couchbase Vector Search  
+  - Build an AI agent that answers questions from documentation links 
+content_type: tutorial
+filter: sdk
+technology:
+  - vector search
+  - retrieval-augmented generation  
+tags:
+  - Artificial Intelligence
+sdk_language:
+  - python
+length: 20 Mins
+---
