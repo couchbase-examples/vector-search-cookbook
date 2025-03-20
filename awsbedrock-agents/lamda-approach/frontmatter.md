@@ -1,7 +1,7 @@
 ---
 # formatter.md
 path: "/tutorial-aws-bedrock-agents-lambda"
-title: Building Intelligent Agents with Amazon Bedrock, Lambda, and Couchbase
+title: Building Intelligent Agents with Amazon Bedrock (Lambda)
 short_title: AWS Bedrock Agents Lambda Approach
 description:
   - Learn how to build intelligent agents using Amazon Bedrock Agents with AWS Lambda and Couchbase.

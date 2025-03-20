@@ -1,7 +1,7 @@
 ---
 # formatter.md
 path: "/tutorial-aws-bedrock-agents-custom-control"
-title: Building Intelligent Agents with Amazon Bedrock Custom Control and Couchbase
+title: Building Intelligent Agents with AWS Bedrock (Custom Control)
 short_title: AWS Bedrock Agents Custom Control Approach
 description:
   - Learn how to build intelligent agents using Amazon Bedrock Agents with a custom control approach and Couchbase.
