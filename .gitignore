@@ -168,3 +168,4 @@ cython_debug/
 
 # util/convert - ignore the output of the conversion script
 /util/convert/output_md
+.qodo
