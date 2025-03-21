@@ -13,6 +13,8 @@ technology:
   - vector search
 tags:
   - Artificial Intelligence
+  - Autogen
+  - Ag2
 sdk_language:
   - python
 length: 20 Mins
