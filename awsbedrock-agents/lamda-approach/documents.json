@@ -1,0 +1,61 @@
+{
+  "documents": [
+    {
+      "text": "The Cline AI assistant, developed by Saoud Rizwan, is a unique system that combines vector search capabilities with Amazon Bedrock agents. Unlike traditional chatbots, it uses a sophisticated multi-agent architecture where specialized agents handle different aspects of document processing and interaction.",
+      "metadata": {
+        "type": "overview",
+        "author": "Saoud Rizwan",
+        "topic": "architecture",
+        "source": "documentation"
+      }
+    },
+    {
+      "text": "One of Cline's key features is its ability to create MCP (Model Context Protocol) servers on the fly. This allows users to extend the system's capabilities by adding new tools and resources that connect to external APIs, all while maintaining a secure and non-interactive environment.",
+      "metadata": {
+        "type": "feature",
+        "topic": "mcp",
+        "source": "technical_spec"
+      }
+    },
+    {
+      "text": "Cline's development workflow is unique in its use of Plan Mode and Act Mode. Plan Mode enables collaborative brainstorming and architecture discussions, while Act Mode focuses on implementation using tools like file operations, CLI commands, and browser automation.",
+      "metadata": {
+        "type": "feature",
+        "topic": "workflow",
+        "source": "user_guide"
+      }
+    },
+    {
+      "text": "The browser automation capabilities in Cline are implemented through Puppeteer, allowing the system to interact with web interfaces in a controlled 900x600 pixel window. This enables testing of web applications, verification of changes, and even general web browsing tasks.",
+      "metadata": {
+        "type": "feature",
+        "topic": "browser",
+        "source": "technical_spec"
+      }
+    },
+    {
+      "text": "Security is a core focus of Cline's design. All MCP servers operate in a non-interactive environment, requiring upfront configuration through environment variables. This ensures secure handling of credentials and prevents unauthorized access during runtime.",
+      "metadata": {
+        "type": "feature",
+        "topic": "security",
+        "source": "security_doc"
+      }
+    },
+    {
+      "text": "Cline's file handling system uses two main tools: write_to_file for complete file creation or overwriting, and replace_in_file for targeted edits. The system is smart enough to handle auto-formatting and maintains file integrity through careful change management.",
+      "metadata": {
+        "type": "feature",
+        "topic": "files",
+        "source": "technical_spec"
+      }
+    },
+    {
+      "text": "The tool use system in Cline follows a strict one-tool-per-message policy, requiring confirmation of each tool's result before proceeding. This ensures reliable operation and prevents race conditions or state corruption in the development environment.",
+      "metadata": {
+        "type": "feature",
+        "topic": "tools",
+        "source": "best_practices"
+      }
+    }
+  ]
+}
