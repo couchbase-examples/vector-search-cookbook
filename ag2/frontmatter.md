@@ -1,7 +1,7 @@
 ---
 # frontmatter
 path: "/tutorial-couchbase-ag2-rag"
-title: Build a RAG Application with Couchbase and AG2
+title: Build an Agentic RAG Application with Couchbase and AG2
 short_title: RAG with Couchbase & AG2
 description:
   - Learn how Couchbase and AG2 simplify RAG applications  
@@ -17,5 +17,5 @@ tags:
   - Ag2
 sdk_language:
   - python
-length: 20 Mins
+length: 40 Mins
 ---
