@@ -85,9 +85,32 @@ class CouchbaseStorage(RAGStorage):
             memory_id = str(uuid.uuid4())
             timestamp = int(time.time() * 1000)
             
-            # Prepare metadata
+            # Prepare metadata (create a copy to avoid modifying references)
             if not metadata:
                 metadata = {}
+            else:
+                metadata = metadata.copy()  # Create a copy to avoid modifying references
+                
+            # Process agent-specific information if present
+            agent_name = metadata.get('agent', 'unknown')
+                
+            # Clean up value if it has the typical LLM response format
+            value_str = str(value)
+            if "Final Answer:" in value_str:
+                # Extract just the actual content - everything after "Final Answer:"
+                parts = value_str.split("Final Answer:", 1)
+                if len(parts) > 1:
+                    value = parts[1].strip()
+                    logger.info(f"Cleaned up response format for agent: {agent_name}")
+            elif value_str.startswith("Thought:"):
+                # Handle thought/final answer format
+                if "Final Answer:" in value_str:
+                    parts = value_str.split("Final Answer:", 1)
+                    if len(parts) > 1:
+                        value = parts[1].strip()
+                        logger.info(f"Cleaned up thought process format for agent: {agent_name}")
+            
+            # Update metadata
             metadata.update({
                 "memory_id": memory_id,
                 "memory_type": self.type,
@@ -95,6 +118,13 @@ class CouchbaseStorage(RAGStorage):
                 "source": "crewai"
             })
 
+            # Log memory information for debugging
+            value_preview = str(value)[:100] + "..." if len(str(value)) > 100 else str(value)
+            metadata_preview = {k: v for k, v in metadata.items() if k != "embedding"}
+            logger.info(f"Saving memory for Agent: {agent_name}")
+            logger.info(f"Memory value preview: {value_preview}")
+            logger.info(f"Memory metadata: {metadata_preview}")
+            
             # Convert value to string if needed
             if isinstance(value, (dict, list)):
                 value = json.dumps(value)
@@ -340,13 +370,15 @@ def main():
                 content = row.get(storage.collection_name, {}).get('text', '')[:100] + "..."  # Truncate for readability
                 source = row.get(storage.collection_name, {}).get('source', 'unknown')
                 agent = row.get(storage.collection_name, {}).get('agent', 'unknown')
+                timestamp = row.get(storage.collection_name, {}).get('timestamp', 0)
                 
                 print(f"Entry {i}:")
                 print(f"ID: {doc_id}")
                 print(f"Memory ID: {memory_id}")
+                print(f"Agent: {agent}")
+                print(f"Timestamp: {timestamp}")
                 print(f"Content: {content}")
                 print(f"Source: {source}")
-                print(f"Agent: {agent}")
                 print("-" * 80)
         except Exception as e:
             logger.error(f"Failed to list memory entries: {str(e)}")
@@ -367,7 +399,8 @@ def main():
         for result in memory_results:
             print(f"Context: {result['context']}")
             print(f"Score: {result['score']}")
-            print(f"Metadata: {result['metadata']}")
+            print(f"Agent: {result['metadata'].get('agent', 'unknown')}")
+            print(f"Timestamp: {result['metadata'].get('timestamp', '')}")
             print("-" * 80)
 
         # Try a more specific query to find agent interactions
