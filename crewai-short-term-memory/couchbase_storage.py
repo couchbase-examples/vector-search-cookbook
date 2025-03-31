@@ -207,25 +207,28 @@ def main():
             }
         }
 
-        # Initialize storage
+        # Initialize storage with debug logging
+        logger.info("Initializing CouchbaseStorage for CrewAI integration")
         storage = CouchbaseStorage(
             type="short_term",
-            embedder_config=embedder_config
+            embedder_config=embedder_config,
+            allow_reset=True
         )
 
         # Reset storage for clean demo
         storage.reset()
+        logger.info("Storage reset completed")
 
         # Test basic storage functionality
         logger.info("\nTesting basic storage...")
-        test_memory = "Vector search enables semantic similarity matching by converting data into high-dimensional vectors"
-        test_metadata = {"category": "technology"}
+        test_memory = "Pep Guardiola praised Manchester City's current form, saying 'The team is playing well, we are in a good moment. The way we are training, the way we are playing - I am really pleased.'"
+        test_metadata = {"category": "sports", "test": "initial_memory"}
         storage.save(test_memory, test_metadata)
 
         # Test search functionality
         logger.info("\nTesting search functionality...")
         search_results = storage.search(
-            query="What is vector search?",
+            query="What did Guardiola say about Manchester City?",
             limit=1,
             score_threshold=0.0
         )
@@ -239,51 +242,74 @@ def main():
         else:
             logger.warning("No search results found")
 
+        # Initialize ShortTermMemory with our storage
+        logger.info("\nInitializing ShortTermMemory with CouchbaseStorage")
+        memory = ShortTermMemory(storage=storage)
+        
+        # Test memory save via ShortTermMemory
+        logger.info("Testing ShortTermMemory direct save...")
+        memory.save(
+            value="Test memory via ShortTermMemory: Manchester City has been dominant in recent matches.",
+            metadata={"test": "stm_direct"},
+            agent="test_agent"
+        )
+
         # Initialize language model
         llm = ChatOpenAI(
-            model="gpt-4",
+            model="gpt-4o",
             temperature=0.7
         )
 
-        # Create agents with memory
-        researcher = Agent(
-            role='Research Expert',
-            goal='Research vector search capabilities',
-            backstory='Expert at finding and analyzing information about vector search technology',
+        logger.info("\nCreating agents with CouchbaseStorage-backed memory")
+        # Create agents with memory, ensuring CouchbaseStorage is properly connected
+        sports_analyst = Agent(
+            role='Sports Analyst',
+            goal='Analyze Manchester City performance',
+            backstory='Expert at analyzing football teams and providing insights on their performance',
             llm=llm,
             memory=True,
-            memory_storage=ShortTermMemory(storage=storage)
+            memory_storage=memory
         )
+        
+        # Verify memory storage is properly set
+        if hasattr(sports_analyst, 'memory') and sports_analyst.memory:
+            logger.info(f"Sports Analyst memory type: {type(sports_analyst.memory).__name__}")
+            if hasattr(sports_analyst.memory, 'storage'):
+                logger.info(f"Sports Analyst memory storage type: {type(sports_analyst.memory.storage).__name__}")
+        else:
+            logger.warning("Sports Analyst has no memory configured!")
 
-        writer = Agent(
-            role='Technical Writer',
-            goal='Create clear documentation',
-            backstory='Expert at technical documentation',
+        journalist = Agent(
+            role='Sports Journalist',
+            goal='Create engaging football articles',
+            backstory='Experienced sports journalist who specializes in Premier League coverage',
             llm=llm,
             memory=True,
-            memory_storage=ShortTermMemory(storage=storage)
+            memory_storage=memory
         )
 
         # Create tasks
-        research_task = Task(
-            description='Research vector search capabilities in modern databases. Focus on Couchbase vector search features.',
-            agent=researcher,
-            expected_output="A comprehensive analysis of vector search capabilities in modern databases, with emphasis on Couchbase implementation."
+        analysis_task = Task(
+            description='Analyze Manchester City\'s recent performance based on Pep Guardiola\'s comments: "The team is playing well, we are in a good moment. The way we are training, the way we are playing - I am really pleased."',
+            agent=sports_analyst,
+            expected_output="A comprehensive analysis of Manchester City's current form based on Guardiola's comments."
         )
 
         writing_task = Task(
-            description='Create documentation about vector search findings, focusing on practical implementation details.',
-            agent=writer,
-            context=[research_task],
-            expected_output="A well-structured technical document explaining vector search implementation in Couchbase."
+            description='Write a sports article about Manchester City\'s form using the analysis and Guardiola\'s comments.',
+            agent=journalist,
+            context=[analysis_task],
+            expected_output="An engaging sports article about Manchester City's current form and Guardiola's perspective."
         )
 
-        # Create crew with memory
+        # Create crew with memory - explicitly setting short_term_memory directly 
+        logger.info("\nCreating crew with memory enabled")
         crew = Crew(
-            agents=[researcher, writer],
-            tasks=[research_task, writing_task],
+            agents=[sports_analyst, journalist],
+            tasks=[analysis_task, writing_task],
             process=Process.sequential,
             memory=True,
+            short_term_memory=memory,  # Explicitly pass our memory implementation
             verbose=True
         )
 
@@ -298,13 +324,41 @@ def main():
 
         # Wait for memories to be stored
         time.sleep(2)
+        
+        # List all documents in the collection
+        logger.info("\nListing all memory entries:")
+        try:
+            # Query to fetch all documents of this memory type
+            query_str = f"SELECT META().id, * FROM `{storage.bucket_name}`.`{storage.scope_name}`.`{storage.collection_name}` WHERE memory_type = $type"
+            query_result = storage.cluster.query(query_str, type=storage.type)
+            
+            print(f"\nAll memory entries in Couchbase:")
+            print("-" * 80)
+            for i, row in enumerate(query_result, 1):
+                doc_id = row.get('id')
+                memory_id = row.get(storage.collection_name, {}).get('memory_id', 'unknown')
+                content = row.get(storage.collection_name, {}).get('text', '')[:100] + "..."  # Truncate for readability
+                source = row.get(storage.collection_name, {}).get('source', 'unknown')
+                agent = row.get(storage.collection_name, {}).get('agent', 'unknown')
+                
+                print(f"Entry {i}:")
+                print(f"ID: {doc_id}")
+                print(f"Memory ID: {memory_id}")
+                print(f"Content: {content}")
+                print(f"Source: {source}")
+                print(f"Agent: {agent}")
+                print("-" * 80)
+        except Exception as e:
+            logger.error(f"Failed to list memory entries: {str(e)}")
+            import traceback
+            logger.error(f"Traceback: {traceback.format_exc()}")
 
         # Test memory retention
         logger.info("\nTesting memory retention...")
-        memory_query = "What are the key features of vector search in Couchbase?"
+        memory_query = "What is Manchester City's current form according to Guardiola?"
         memory_results = storage.search(
             query=memory_query,
-            limit=2,
+            limit=5,  # Increased to see more results
             score_threshold=0.0  # Lower threshold to see all results
         )
         
@@ -316,8 +370,28 @@ def main():
             print(f"Metadata: {result['metadata']}")
             print("-" * 80)
 
+        # Try a more specific query to find agent interactions
+        logger.info("\nSearching for agent interactions in memory...")
+        interaction_query = "Manchester City playing style analysis tactical"
+        interaction_results = storage.search(
+            query=interaction_query,
+            limit=5,
+            score_threshold=0.0
+        )
+        
+        print("\nAgent Interaction Memory Results:")
+        print("-" * 80)
+        for result in interaction_results:
+            print(f"Context: {result['context'][:200]}...")  # Limit output size
+            print(f"Score: {result['score']}")
+            print(f"Agent: {result['metadata'].get('agent', 'unknown')}")
+            print(f"Source: {result['metadata'].get('source', 'unknown')}")
+            print("-" * 80)
+
     except Exception as e:
         logger.error(f"Demo failed: {str(e)}")
+        import traceback
+        logger.error(f"Traceback: {traceback.format_exc()}")
         raise
 
 if __name__ == "__main__":
