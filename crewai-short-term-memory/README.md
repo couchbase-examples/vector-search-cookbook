@@ -10,6 +10,11 @@ This implementation demonstrates how to use Couchbase as a storage backend for C
 - Configurable embedding providers (defaults to OpenAI)
 - Uses existing vector search index for efficient similarity search
 
+> **Note on Implementation:** This example uses the LangChain Couchbase integration (`langchain_couchbase`) for simplicity and to demonstrate integration with the broader LangChain ecosystem. In production environments, you may want to use the Couchbase SDK directly for better performance and more control.
+
+> For more information on using the Couchbase SDK directly, refer to:
+> - [Couchbase Python SDK Documentation](https://docs.couchbase.com/python-sdk/current/howtos/full-text-searching-with-sdk.html#single-vector-query)
+
 ## Prerequisites
 
 1. Couchbase Server running with vector search capability
