@@ -8,7 +8,7 @@ This application demonstrates how to create a multi-agent system using Amazon Be
 
 ## Prerequisites
 
-- Python 3.8+
+- Python 3.9+
 - Couchbase Server running locally or in the cloud
 - AWS account with access to Amazon Bedrock
 - AWS credentials with appropriate permissions

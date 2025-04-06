@@ -289,21 +289,6 @@ def package_function(function_name):
             '-r', os.path.join(current_dir, 'requirements.txt')
         ])
 
-        # # Removes Couchbase SDK files as well. Not needed for Lambda deployment.
-        # # Remove unnecessary files to reduce package size
-        # print("Cleaning up package to reduce size...")
-        # for root, dirs, files in os.walk(build_dir):
-        #     # Remove test directories
-        #     for dir_name in dirs[:]:
-        #         if dir_name in ['tests', 'test', '__pycache__', '.pytest_cache', 'dist-info']:
-        #             shutil.rmtree(os.path.join(root, dir_name))
-        #             dirs.remove(dir_name)
-
-        #     # Remove unnecessary files
-        #     for file_name in files:
-        #         if file_name.endswith(('.pyc', '.pyo', '.pyd', '.so', '.c', '.h', '.cpp')):
-        #             os.remove(os.path.join(root, file_name))
-
         # Copy function code
         shutil.copy(
             os.path.join(current_dir, f'{function_name}.py'),
