@@ -10,7 +10,7 @@ from couchbase.cluster import Cluster
 from couchbase.options import ClusterOptions
 from couchbase.auth import PasswordAuthenticator
 from couchbase.diagnostics import PingState, ServiceType
-from langchain_couchbase.vectorstores import CouchbaseVectorStore
+from langchain_couchbase.vectorstores import CouchbaseSearchVectorStore
 from langchain_openai import OpenAIEmbeddings, ChatOpenAI
 import time
 import json
@@ -208,7 +208,7 @@ class CouchbaseStorage(RAGStorage):
             self.index_name = os.getenv('INDEX_NAME', 'vector_search_crew')
 
             # Initialize vector store
-            self.vector_store = CouchbaseVectorStore(
+            self.vector_store = CouchbaseSearchVectorStore(
                 cluster=self.cluster,
                 bucket_name=self.bucket_name,
                 scope_name=self.scope_name,
