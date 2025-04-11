@@ -4,7 +4,6 @@
     "uuid": "79f4a0e74a46142c",
     "sourceType": "gocbcore",
     "sourceName": "vector-search-testing",
-    "sourceUUID": "50a390a87d91debfe209d91c6e44af2c",
     "planParams": {
       "maxPartitionsPerPIndex": 1024,
       "indexPartitions": 1
