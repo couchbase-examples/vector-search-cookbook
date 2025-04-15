@@ -5,7 +5,7 @@ title: Retrieval-Augmented Generation (RAG) with Couchbase and OpenRouter Deepse
 short_title: RAG with Couchbase and OpenRouter Deepseek
 description:
   - Learn how to build a semantic search engine using Couchbase and OpenRouter with Deepseek.
-  - This tutorial demonstrates how to integrate Couchbase's vector search capabilities with OpenRouter with Deepseek as both embeddings and language model provider.
+  - This tutorial demonstrates how to integrate Couchbase's vector search capabilities with OpenRouter Deepseek as both embeddings and language model provider.
   - You'll understand how to perform Retrieval-Augmented Generation (RAG) using LangChain and Couchbase.
 content_type: tutorial
 filter: sdk
