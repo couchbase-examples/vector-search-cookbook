@@ -1,7 +1,7 @@
 ---
 # frontmatter
 path: "/tutorial-openrouter-deepseek"
-title: Retrieval-Augmented Generation (RAG) with Couchbase and OpenRouter Deepseek
+title: Retrieval-Augmented Generation with Couchbase and OpenRouter Deepseek
 short_title: RAG with Couchbase and OpenRouter Deepseek
 description:
   - Learn how to build a semantic search engine using Couchbase and OpenRouter with Deepseek.
