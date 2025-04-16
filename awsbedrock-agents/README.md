@@ -68,7 +68,7 @@ The system uses:
   - Vector store integration
   - Bedrock integration
 
-All agents use the Return of Control (ROC) pattern to interact directly with the system, eliminating the need for Lambda functions.
+All agents use the [Return of Control (ROC)](https://docs.aws.amazon.com/bedrock/latest/userguide/agents-returncontrol.html) pattern to interact directly with the system, eliminating the need for Lambda functions.
 
 ## Agent Roles
 
@@ -142,7 +142,3 @@ The system uses a vector search index optimized for:
 - Text field storage
 
 See `aws_index.json` for the complete index configuration.
-
-## License
-
-This project is licensed under the MIT License - see the LICENSE file for details.
