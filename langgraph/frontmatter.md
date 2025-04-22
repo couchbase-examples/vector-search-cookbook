@@ -1,10 +1,10 @@
 ---
 # frontmatter
 path: "/tutorial-langgraph-persistence-checkpoint"
-title: Persist LangGraph State with Couchbase
+title: Persist LangGraph State with Couchbase Checkpointer
 short_title: Persist LangGraph State with Couchbase
 description:
-  - Learn how to write a Checkpointer Library for LangGraph
+  - Learn how to use Checkpointer Library for LangGraph
   - Use Couchbase to store the LangGraph states
 content_type: tutorial
 filter: sdk
@@ -15,5 +15,5 @@ tags:
   - LangGraph
 sdk_language:
   - python
-length: 30 Mins
+length: 20 Mins
 ---
