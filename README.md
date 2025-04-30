@@ -79,7 +79,6 @@ For more information on creating a vector search index, please follow the [instr
     "uuid": "12fe1360b64a69c0",
     "sourceType": "gocbcore",
     "sourceName": "vector-search-testing",
-    "sourceUUID": "ee9841e7b3a580d76862bb00927affc4",
     "planParams": {
       "maxPartitionsPerPIndex": 64,
       "indexPartitions": 16
