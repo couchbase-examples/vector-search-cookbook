@@ -1,0 +1,64 @@
+{
+  "openapi": "3.0.0",
+  "info": {
+    "title": "Couchbase Document Search API",
+    "version": "1.0.0",
+    "description": "API for searching documents stored in Couchbase Vector Search."
+  },
+  "paths": {
+    "/search_documents": {
+      "post": {
+        "summary": "Search for relevant documents",
+        "description": "Performs a vector similarity search in Couchbase based on the user query.",
+        "operationId": "searchDocuments",
+        "requestBody": {
+          "description": "Search query and parameters",
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "properties": {
+                  "query": {
+                    "type": "string",
+                    "description": "The natural language query to search for."
+                  },
+                  "k": {
+                    "type": "integer",
+                    "description": "The number of top results to return.",
+                    "default": 3
+                  }
+                },
+                "required": ["query"]
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Search results found",
+            "content": {
+              "application/json": { 
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "results": {
+                      "type": "string", 
+                      "description": "A formatted string containing the concatenated search results."
+                    }
+                  }
+                }
+              }
+            }
+          },
+           "400": {
+             "description": "Bad request (e.g., missing query)"
+           },
+           "500": {
+             "description": "Internal server error during search"
+           }
+        }
+      }
+    }
+  }
+} 

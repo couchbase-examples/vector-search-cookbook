@@ -1,0 +1,64 @@
+{
+  "openapi": "3.0.0",
+  "info": {
+    "title": "Content Formatting API",
+    "version": "1.0.0",
+    "description": "API for formatting content using a specified style."
+  },
+  "paths": {
+    "/format_content": {
+      "post": {
+        "summary": "Format content",
+        "description": "Takes input content and formats it according to the specified style using an LLM.",
+        "operationId": "formatContent",
+        "requestBody": {
+          "description": "Content and formatting style",
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "properties": {
+                  "content": {
+                    "type": "string",
+                    "description": "The content to be formatted."
+                  },
+                  "style": {
+                    "type": "string",
+                    "description": "The desired formatting style (e.g., 'professional', 'user-friendly', 'bullet points').",
+                    "default": "user-friendly"
+                  }
+                },
+                "required": ["content"]
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Content formatted successfully",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "formatted_content": {
+                      "type": "string",
+                      "description": "The formatted content."
+                    }
+                  }
+                }
+              }
+            }
+          },
+           "400": {
+             "description": "Bad request (e.g., missing content)"
+           },
+           "500": {
+             "description": "Internal server error during formatting"
+           }
+        }
+      }
+    }
+  }
+} 
