@@ -7,6 +7,7 @@ import traceback
 import uuid
 from datetime import timedelta
 import shutil
+import sys
 
 import boto3
 from botocore.exceptions import ClientError
@@ -69,12 +70,12 @@ AGENT_MODEL_ID = "anthropic.claude-3-sonnet-20240229-v1:0" # Using Sonnet for th
 
 # Paths (relative to this script's location initially)
 SCRIPT_DIR = os.path.dirname(os.path.abspath(__file__))
-LAMDA_APPROACH_DIR = os.path.abspath(os.path.join(SCRIPT_DIR, '..', 'lamda-approach')) # Keep for index/docs
 SCHEMAS_DIR = os.path.join(SCRIPT_DIR, 'schemas') # New Schemas Dir
-RESEARCHER_SCHEMA_PATH = os.path.join(SCHEMAS_DIR, 'researcher_schema.json')
-WRITER_SCHEMA_PATH = os.path.join(SCHEMAS_DIR, 'writer_schema.json')
-INDEX_JSON_PATH = os.path.join(LAMDA_APPROACH_DIR, 'aws_index.json') # Keep
-DOCS_JSON_PATH = os.path.join(LAMDA_APPROACH_DIR, 'documents.json') # Keep
+# RESEARCHER_SCHEMA_PATH = os.path.join(SCHEMAS_DIR, 'researcher_schema.json') # Removed
+# WRITER_SCHEMA_PATH = os.path.join(SCHEMAS_DIR, 'writer_schema.json')     # Removed
+SEARCH_FORMAT_SCHEMA_PATH = os.path.join(SCHEMAS_DIR, 'search_and_format_schema.json') # Added
+INDEX_JSON_PATH = os.path.join(SCRIPT_DIR, 'aws_index.json') # Keep
+DOCS_JSON_PATH = os.path.join(SCRIPT_DIR, 'documents.json') # Changed to load from script's directory
 
 
 # --- Helper Functions ---
@@ -986,11 +987,13 @@ def create_agent(agent_client, agent_name, agent_role_arn, foundation_model_id):
     """Creates a new Bedrock Agent."""
     logger.info(f"--- Creating Agent: {agent_name} ---")
     try:
+        # Updated Instruction for single tool
         instruction = (
-            "You are a helpful research assistant. Your primary function is to search a knowledge base "
-            "for relevant documents based on user queries. If the user asks for the findings "
-            "to be formatted in a specific way, use the formatting tool. "
-            "Only use the tools provided. Do not make up information."
+            "You are a helpful research assistant. Your primary function is to use the SearchAndFormat tool "
+            "to find relevant documents based on user queries and format them. " 
+            "Use the user's query for the search, and specify a formatting style if requested, otherwise use the default. "
+            "Present the formatted results returned by the tool directly to the user."
+            "Only use the tool provided. Do not add your own knowledge."
         )
 
         response = agent_client.create_agent(
@@ -1023,8 +1026,6 @@ def create_agent(agent_client, agent_name, agent_role_arn, foundation_model_id):
             logger.error(f"Agent {agent_id} creation failed.")
             # Optionally retrieve failure reasons if API provides them
             raise Exception(f"Agent creation failed for {agent_name}")
-        elif final_status != 'NOT_PREPARED':
-            logger.warning(f"Agent {agent_id} reached unexpected status '{final_status}' after creation.")
         else:
              logger.info(f"Agent {agent_id} successfully created (Status: {final_status}).")
              
@@ -1034,19 +1035,39 @@ def create_agent(agent_client, agent_name, agent_role_arn, foundation_model_id):
         logger.error(f"Error creating agent '{agent_name}': {e}")
         raise
 
-def create_action_group(agent_client, agent_id, action_group_name, function_arn, schema_path):
-    """Creates an action group for the agent using a schema file."""
-    logger.info(f"--- Creating Action Group: {action_group_name} for Agent: {agent_id} ---")
+def create_action_group(agent_client, agent_id, action_group_name, function_arn, schema_path=None):
+    """Creates an action group for the agent using Define with function details."""
+    logger.info(f"--- Creating/Updating Action Group (Function Details): {action_group_name} for Agent: {agent_id} ---")
     logger.info(f"Lambda ARN: {function_arn}")
-    logger.info(f"Schema Path: {schema_path}")
 
-    if not os.path.exists(schema_path):
-        raise FileNotFoundError(f"Action group schema file not found: {schema_path}")
+    # Define function schema details (for functionSchema parameter)
+    function_schema_details = {
+        'functions': [
+            {
+                'name': 'searchAndFormatDocuments', # Function name agent will call
+                'description': 'Performs vector search based on query, retrieves documents, and formats results using specified style.',
+                'parameters': {
+                    'query': {
+                        'description': 'The search query text.',
+                        'type': 'string',
+                        'required': True
+                    },
+                    'k': {
+                        'description': 'The maximum number of documents to retrieve.',
+                        'type': 'integer',
+                        'required': False # Making optional as Lambda has default
+                    },
+                    'style': {
+                        'description': 'The desired formatting style for the results (e.g., \'bullet points\', \'paragraph\', \'summary\').',
+                        'type': 'string',
+                        'required': False # Making optional as Lambda has default
+                    }
+                }
+            }
+        ]
+    }
 
     try:
-        with open(schema_path, 'r') as f:
-            schema_definition = f.read()
-
         # Check if Action Group already exists for the DRAFT version
         try:
              logger.info(f"Checking if action group '{action_group_name}' already exists for agent {agent_id} DRAFT version...")
@@ -1062,23 +1083,24 @@ def create_action_group(agent_client, agent_id, action_group_name, function_arn,
              
              if existing_group:
                  ag_id = existing_group['actionGroupId']
-                 logger.warning(f"Action Group '{action_group_name}' (ID: {ag_id}) already exists for agent {agent_id} DRAFT. Attempting update.")
-                 # Update existing action group
+                 logger.warning(f"Action Group '{action_group_name}' (ID: {ag_id}) already exists for agent {agent_id} DRAFT. Attempting update to Function Details.")
+                 # Update existing action group - REMOVE apiSchema, ADD functionSchema
                  response = agent_client.update_agent_action_group(
                      agentId=agent_id,
                      agentVersion='DRAFT',
                      actionGroupId=ag_id,
                      actionGroupName=action_group_name,
-                     functionArn=function_arn,
                      actionGroupExecutor={'lambda': function_arn},
-                     apiSchema={'payload': schema_definition},
+                     functionSchema={ # Use functionSchema
+                         'functions': function_schema_details['functions'] # Pass the list with the correct key
+                     },
                      actionGroupState='ENABLED'
                  )
                  ag_info = response.get('agentActionGroup')
-                 logger.info(f"Successfully updated Action Group '{action_group_name}' (ID: {ag_info.get('actionGroupId')}).")
+                 logger.info(f"Successfully updated Action Group '{action_group_name}' (ID: {ag_info.get('actionGroupId')}) to use Function Details.")
                  return ag_info.get('actionGroupId')
              else:
-                  logger.info(f"Action group '{action_group_name}' does not exist. Creating new.")
+                  logger.info(f"Action group '{action_group_name}' does not exist. Creating new with Function Details.")
 
         except ClientError as e:
              logger.error(f"Error checking for existing action group '{action_group_name}': {e}. Proceeding with creation attempt.")
@@ -1087,29 +1109,25 @@ def create_action_group(agent_client, agent_id, action_group_name, function_arn,
         # Create new action group if not found or update failed implicitly
         response = agent_client.create_agent_action_group(
             agentId=agent_id,
-            agentVersion='DRAFT', # Always work with DRAFT for action groups
+            agentVersion='DRAFT', 
             actionGroupName=action_group_name,
             actionGroupExecutor={
-                'lambda': function_arn # Specify the Lambda ARN here
+                'lambda': function_arn 
             },
-            apiSchema={
-                'payload': schema_definition # Provide schema inline
-                # 's3': {...} # Alternative: if schema is in S3
+            functionSchema={ # Use functionSchema
+                 'functions': function_schema_details['functions'] # Pass the list with the correct key
             },
-            actionGroupState='ENABLED' # Enable the action group
+            actionGroupState='ENABLED' 
         )
         ag_info = response.get('agentActionGroup')
         ag_id = ag_info.get('actionGroupId')
-        logger.info(f"Successfully created Action Group '{action_group_name}' with ID: {ag_id}")
+        logger.info(f"Successfully created Action Group '{action_group_name}' with ID: {ag_id} using Function Details.")
         time.sleep(5) # Pause after creation/update
         return ag_id
 
     except ClientError as e:
-        logger.error(f"Error creating/updating action group '{action_group_name}': {e}")
+        logger.error(f"Error creating/updating action group '{action_group_name}' using Function Details: {e}")
         raise
-    except FileNotFoundError as e:
-         logger.error(f"Schema file error for '{action_group_name}': {e}")
-         raise
 
 def prepare_agent(agent_client, agent_id):
     """Prepares the DRAFT version of the agent."""
@@ -1157,23 +1175,64 @@ def prepare_agent(agent_client, agent_id):
         waiter_model = WaiterModel(waiter_config)
         custom_waiter = create_waiter_with_client('AgentPrepared', waiter_model, agent_client)
 
-        try:
+        try: # Outer try for both preparation and alias handling
              custom_waiter.wait(agentId=agent_id)
              logger.info(f"Agent {agent_id} successfully prepared.")
-        except Exception as wait_e:
-             logger.error(f"Agent {agent_id} preparation failed or timed out: {wait_e}")
-             # Check final status
-             try:
-                 final_status = agent_client.get_agent(agentId=agent_id)['agent']['agentStatus']
-                 logger.error(f"Final agent status: {final_status}")
-                 # You might want to retrieve failure reasons here if the API supports it
-             except Exception as get_e:
-                 logger.error(f"Could not retrieve final agent status after wait failure: {get_e}")
-             raise Exception(f"Agent preparation failed for {agent_id}")
 
-    except ClientError as e:
-        logger.error(f"Error initiating agent preparation for {agent_id}: {e}")
-        raise
+             # --- Alias Creation/Update (Using Custom Alias "prod") ---
+             # This logic runs only if the preparation wait succeeds
+             try: # Inner try specifically for alias operations
+                 logger.info(f"Checking for alias '{alias_name}' for agent {agent_id}...")
+                 existing_alias = None
+                 paginator = bedrock_agent_client.get_paginator('list_agent_aliases')
+                 for page in paginator.paginate(agentId=agent_id):
+                     for alias_summary in page.get('agentAliasSummaries', []):
+                         if alias_summary.get('agentAliasName') == alias_name:
+                             existing_alias = alias_summary
+                             break
+                     if existing_alias:
+                         break
+                 
+                 if existing_alias:
+                     agent_alias_id_to_use = existing_alias['agentAliasId']
+                     logger.info(f"Using existing alias '{alias_name}' with ID: {agent_alias_id_to_use}.")
+                 else:
+                     logger.info(f"Alias '{alias_name}' not found. Creating new alias...")
+                     create_alias_response = bedrock_agent_client.create_agent_alias(
+                         agentId=agent_id,
+                         agentAliasName=alias_name
+                         # routingConfiguration removed - defaults to latest prepared (DRAFT)
+                     )
+                     # Assign the ID immediately after creation, inside the else block
+                     agent_alias_id_to_use = create_alias_response.get('agentAlias', {}).get('agentAliasId')
+                     logger.info(f"Successfully created alias '{alias_name}' with ID: {agent_alias_id_to_use}. (Defaults to latest prepared version - DRAFT)")
+
+                 if not agent_alias_id_to_use:
+                      # Use a more specific exception
+                      raise ValueError(f"Failed to get a valid alias ID for '{alias_name}'")
+
+                 logger.info(f"Waiting 10s for alias '{alias_name}' changes to propagate...")
+
+             except ClientError as alias_e: # Catch only alias-specific ClientErrors here
+                 logger.error(f"Failed to create/update alias '{alias_name}' for agent {agent_id}: {alias_e}")
+                 logger.error(traceback.format_exc())
+                 sys.exit(1) # Exit if alias setup fails
+            # End of inner alias try/except
+
+        except Exception as e: # Outer except catches prepare_agent wait errors OR unhandled alias errors
+            logger.error(f"Agent {agent_id} preparation failed or timed out (or alias error): {e}")
+            # Check final status if possible
+            try:
+                final_status = agent_client.get_agent(agentId=agent_id)['agent']['agentStatus']
+                logger.error(f"Final agent status: {final_status}")
+            except Exception as get_e:
+                logger.error(f"Could not retrieve final agent status after wait failure: {get_e}")
+            raise Exception(f"Agent preparation or alias setup failed for {agent_id}")
+
+    except Exception as e:
+        logger.error(f"Error preparing agent {agent_id}: {e}")
+        # Handle error, maybe exit
+        sys.exit(1)
 
 
 # --- Agent Invocation Function ---
@@ -1194,48 +1253,50 @@ def test_agent_invocation(agent_runtime_client, agent_id, agent_alias_id, sessio
         )
 
         logger.info("Agent invocation successful. Processing response...")
+        print(f"Response: {response}")
         completion_text = ""
         trace_events = []
 
         # The response is a stream. Iterate through the chunks.
         for event in response.get('completion', []):
+            print(f"Event: {event}")
             if 'chunk' in event:
                 data = event['chunk'].get('bytes', b'')
                 decoded_chunk = data.decode('utf-8')
                 completion_text += decoded_chunk
-                logger.info(f"Received chunk: {decoded_chunk}")
+                # Log chunk as it arrives
+                # print(f"Chunk: {decoded_chunk}") 
             elif 'trace' in event:
-                # Log trace events for debugging
                 trace_part = event['trace'].get('trace')
                 if trace_part:
+                     # Log the full trace part object for detailed debugging
+                    #  print(f"Trace Event: {json.dumps(trace_part)}")
                      trace_events.append(trace_part)
-                     # logger.debug(f"Trace Part: {json.dumps(trace_part)}") # Verbose
             else:
                  logger.warning(f"Unhandled event type in stream: {event}")
 
+        # Log final combined response
         logger.info(f"\n--- Agent Final Response ---\n{completion_text}")
         
-        # Log trace summary
+        # Keep trace summary log (optional, can be removed if too verbose)
         if trace_events:
-             logger.info("\n--- Invocation Trace Summary ---")
+             logger.info("\n--- Invocation Trace Summary (Repeated for context) ---")
              for i, trace in enumerate(trace_events):
                   trace_type = trace.get('type')
                   step_type = trace.get('orchestration', {}).get('stepType')
-                  model_invocation_input = trace.get('modelInvocationInput') # Often large
-                  observation = trace.get('observation')
-                  rationale = trace.get('rationale', {}).get('text')
-                  
-                  log_line = f"Trace {i+1}: Type={trace_type}, Step={step_type}"
-                  if rationale: log_line += f", Rationale=\"{rationale[:100]}...\""
-                  # Add more fields as needed, be careful with large inputs/outputs
-                  logger.info(log_line)
-                  # Example: Log model input summary if present
+                  model_invocation_input = trace.get('modelInvocationInput')
                   if model_invocation_input:
-                      fm_input = model_invocation_input.get('text','')
-                      logger.info(f"  Model Input: {fm_input[:150]}...")
+                      fm_input = model_invocation_input.get('text',
+                          json.dumps(model_invocation_input.get('invocationInput',{}).get('toolConfiguration',{})) # Handle tool input
+                      )
+                      logger.info(f"  Model Input Snippet: {fm_input[:150]}...")
+                  observation = trace.get('observation')
                   if observation:
                       logger.info(f"  Observation: {observation}")
-
+                  log_line = f"Trace {i+1}: Type={trace_type}, Step={step_type}"
+                  rationale = trace.get('rationale', {}).get('text')
+                  if rationale: log_line += f", Rationale=\"{rationale[:100]}...\""
+                  logger.info(log_line) # Log summary line
 
         return completion_text
 
@@ -1324,8 +1385,6 @@ if __name__ == "__main__":
 
             inserted_ids = vector_store.add_texts(texts=texts, metadatas=metadatas)
             logger.info(f"Successfully added {len(inserted_ids)} documents to the vector store.")
-            logger.info("Waiting briefly for vector indexing...")
-            time.sleep(5)
         else:
              logger.warning("No documents found in the JSON file to add.")
 
@@ -1335,7 +1394,7 @@ if __name__ == "__main__":
     except Exception as e:
         logger.error(f"Error during vector store setup or data loading: {e}")
         logger.error(traceback.format_exc())
-        exit(1)
+        exit(1) 
 
     logger.info("--- Couchbase Setup and Data Loading Complete ---")
 
@@ -1351,38 +1410,30 @@ if __name__ == "__main__":
         exit(1)
 
 
-    # --- Deploy Lambda Functions ---
-    researcher_lambda_name = "bedrock_agent_researcher_exp"
-    writer_lambda_name = "bedrock_agent_writer_exp"
+    # --- Deploy Lambda Function (Single Function) ---
+    search_format_lambda_name = "bedrock_agent_search_format_exp"
     lambda_source_dir = os.path.join(SCRIPT_DIR, 'lambda_functions')
     lambda_build_dir = SCRIPT_DIR # Final zip ends up here
 
-    logger.info("--- Starting Lambda Deployment --- ")
-    researcher_lambda_arn = None
-    writer_lambda_arn = None
-    researcher_zip_path = None # Define to ensure cleanup happens
-    writer_zip_path = None
+    logger.info("--- Starting Lambda Deployment (Single Function) --- ")
+    search_format_lambda_arn = None
+    search_format_zip_path = None
 
     try:
-        delete_lambda_function(lambda_client, researcher_lambda_name)
-        delete_lambda_function(lambda_client, writer_lambda_name)
+        # Delete old lambdas if they exist (optional, but good cleanup)
+        delete_lambda_function(lambda_client, "bedrock_agent_researcher_exp")
+        delete_lambda_function(lambda_client, "bedrock_agent_writer_exp")
+        # Delete the new lambda if it exists from a previous run
+        delete_lambda_function(lambda_client, search_format_lambda_name)
 
-        researcher_zip_path = package_function("bedrock_agent_researcher", lambda_source_dir, lambda_build_dir)
-        writer_zip_path = package_function("bedrock_agent_writer", lambda_source_dir, lambda_build_dir)
+        search_format_zip_path = package_function("bedrock_agent_search_and_format", lambda_source_dir, lambda_build_dir)
 
-        researcher_lambda_arn = create_lambda_function(
-            lambda_client=lambda_client, function_name=researcher_lambda_name,
+        search_format_lambda_arn = create_lambda_function(
+            lambda_client=lambda_client, function_name=search_format_lambda_name,
             handler='lambda_function.lambda_handler', role_arn=agent_role_arn,
-            zip_file=researcher_zip_path, region=AWS_REGION
+            zip_file=search_format_zip_path, region=AWS_REGION
         )
-        logger.info(f"Researcher Lambda Deployed: {researcher_lambda_arn}")
-
-        writer_lambda_arn = create_lambda_function(
-            lambda_client=lambda_client, function_name=writer_lambda_name,
-            handler='lambda_function.lambda_handler', role_arn=agent_role_arn,
-            zip_file=writer_zip_path, region=AWS_REGION
-        )
-        logger.info(f"Writer Lambda Deployed: {writer_lambda_arn}")
+        logger.info(f"Search/Format Lambda Deployed: {search_format_lambda_arn}")
 
     except FileNotFoundError as e:
          logger.error(f"Lambda packaging failed: Required file not found. {e}")
@@ -1392,86 +1443,138 @@ if __name__ == "__main__":
         logger.error(traceback.format_exc())
         exit(1)
     finally:
-        logger.info("Cleaning up deployment zip files...")
-        if researcher_zip_path and os.path.exists(researcher_zip_path):
-            os.remove(researcher_zip_path)
-        if writer_zip_path and os.path.exists(writer_zip_path):
-             os.remove(writer_zip_path)
+        logger.info("Cleaning up deployment zip file...")
+        if search_format_zip_path and os.path.exists(search_format_zip_path):
+            os.remove(search_format_zip_path)
 
     logger.info("--- Lambda Deployment Complete --- ")
 
 
-    # --- Create Bedrock Agent ---
-    agent_name = "couchbase_research_writer_agent_exp" # Unique name
+    # --- Agent Setup --- 
+    agent_name = f"couchbase_search_format_agent_exp"
     agent_id = None
     agent_arn = None
+    alias_name = "prod" # Define alias name here
+    agent_alias_id_to_use = None # Initialize alias ID here
 
-    # Ensure we have valid Lambda ARNs before proceeding
-    if not researcher_lambda_arn or not writer_lambda_arn:
-        logger.error("Lambda function deployment failed or ARNs not retrieved. Cannot proceed with agent creation.")
-        exit(1)
-
+    # 1. Attempt to find and delete existing agent
+    logger.info(f"Checking for and deleting existing agent: {agent_name}")
     try:
-        # 1. Delete existing agent and its resources first
-        delete_agent_and_resources(bedrock_agent_client, agent_name)
+        found_agent_id = get_agent_by_name(bedrock_agent_client, agent_name)
+        if found_agent_id:
+            logger.warning(f"--- Found existing agent {found_agent_id}. Deleting Agent Resources --- ")
+            delete_agent_and_resources(bedrock_agent_client, agent_name) # Deletes based on name
+            logger.info(f"Deletion process completed for any existing agent named {agent_name}.")
+        else:
+             logger.info(f"Agent '{agent_name}' not found. No deletion needed.")
+    except Exception as e:
+        # Log error during find/delete but proceed to creation attempt
+        logger.error(f"Error during agent finding/deletion phase: {e}. Proceeding to creation attempt.")
 
-        # 2. Create the agent
+    # 2. Always attempt to create the agent after the delete phase
+    logger.info(f"--- Creating Agent: {agent_name} ---")
+    try:
         agent_id, agent_arn = create_agent(
             agent_client=bedrock_agent_client,
             agent_name=agent_name,
             agent_role_arn=agent_role_arn,
             foundation_model_id=AGENT_MODEL_ID
         )
-
-        # 3. Create Action Groups
-        researcher_ag_id = create_action_group(
-            agent_client=bedrock_agent_client,
-            agent_id=agent_id,
-            action_group_name="ResearcherActionGroup",
-            function_arn=researcher_lambda_arn,
-            schema_path=RESEARCHER_SCHEMA_PATH
-        )
-
-        writer_ag_id = create_action_group(
-            agent_client=bedrock_agent_client,
-            agent_id=agent_id,
-            action_group_name="WriterActionGroup",
-            function_arn=writer_lambda_arn,
-            schema_path=WRITER_SCHEMA_PATH
-        )
-
-        # 4. Prepare the agent
-        prepare_agent(bedrock_agent_client, agent_id)
-
-        logger.info(f"--- Bedrock Agent '{agent_name}' (ID: {agent_id}) Setup Complete ---")
-
-    except FileNotFoundError as e:
-         logger.error(f"Agent setup failed: Required schema file not found. {e}")
-         exit(1)
+        if not agent_id:
+            raise Exception("create_agent function did not return a valid agent ID.")
     except Exception as e:
-        logger.error(f"Bedrock Agent setup failed: {e}")
+        logger.error(f"Failed to create agent '{agent_name}': {e}")
         logger.error(traceback.format_exc())
-        # Attempt cleanup even on failure
-        logger.info("Attempting cleanup after agent setup failure...")
-        delete_agent_and_resources(bedrock_agent_client, agent_name)
-        exit(1)
+        sys.exit(1) # Exit if creation fails
 
-    # --- Test Agent Invocation ---
-    # Agents are invoked via an alias. TSTALIASID is automatically created when 
-    # you prepare an agent and is recommended for testing.
-    agent_alias_id = "TSTALIASID" 
-    session_id = str(uuid.uuid4()) # Generate a unique session ID for this test run
-    test_prompt = "What were the key findings in the llama 2 paper?"
+    # --- Action Group Creation/Update (Now assumes agent_id is valid) ---
+    action_group_name = "SearchAndFormatActionGroup"
+    action_group_id = create_action_group(
+        agent_client=bedrock_agent_client,
+        agent_id=agent_id,
+        action_group_name=action_group_name,
+        function_arn=search_format_lambda_arn,
+        # schema_path=None # No longer needed explicitly if default is None
+    )
 
-    if agent_id and agent_alias_id:
-        test_agent_invocation(
-            agent_runtime_client=bedrock_agent_runtime_client,
-            agent_id=agent_id,
-            agent_alias_id=agent_alias_id,
-            session_id=session_id,
-            prompt=test_prompt
-        )
+    # Add a slightly longer wait after action group modification/creation
+    logger.info("Waiting 30s after action group setup before preparing agent...")
+    time.sleep(30)
+
+
+    # --- Prepare Agent ---
+    if agent_id:
+        logger.info(f"--- Preparing Existing Agent: {agent_id} ---")
+        preparation_successful = False
+        try:
+            # --- Preparation --- 
+            prepare_agent(bedrock_agent_client, agent_id)
+            logger.info(f"Agent {agent_id} preparation seems complete (waiter succeeded).")
+            preparation_successful = True # Flag success
+
+            # --- Alias Handling (runs only if preparation succeeded) ---
+            # Moved inside the main try block
+            if preparation_successful:
+                try:
+                    # --- Alias Creation/Update (Using Custom Alias "prod") ---
+                    logger.info(f"Checking for alias '{alias_name}' for agent {agent_id}...")
+                    existing_alias = None
+                    paginator = bedrock_agent_client.get_paginator('list_agent_aliases')
+                    for page in paginator.paginate(agentId=agent_id):
+                        for alias_summary in page.get('agentAliasSummaries', []):
+                            if alias_summary.get('agentAliasName') == alias_name:
+                                existing_alias = alias_summary
+                                break
+                        if existing_alias:
+                            break
+                    
+                    if existing_alias:
+                        agent_alias_id_to_use = existing_alias['agentAliasId']
+                        logger.info(f"Using existing alias '{alias_name}' with ID: {agent_alias_id_to_use}.")
+                    else:
+                        logger.info(f"Alias '{alias_name}' not found. Creating new alias...")
+                        create_alias_response = bedrock_agent_client.create_agent_alias(
+                            agentId=agent_id,
+                            agentAliasName=alias_name
+                            # routingConfiguration removed - defaults to latest prepared (DRAFT)
+                        )
+                        # Assign the ID immediately after creation, inside the else block
+                        agent_alias_id_to_use = create_alias_response.get('agentAlias', {}).get('agentAliasId')
+                        logger.info(f"Successfully created alias '{alias_name}' with ID: {agent_alias_id_to_use}. (Defaults to latest prepared version - DRAFT)")
+
+                    if not agent_alias_id_to_use:
+                         # Use a more specific exception
+                         raise ValueError(f"Failed to get a valid alias ID for '{alias_name}'")
+
+                    logger.info(f"Waiting 10s for alias '{alias_name}' changes to propagate...")
+                    time.sleep(10)
+
+                except ClientError as e: # Catch errors from alias logic
+                    logger.error(f"Failed to create/update alias '{alias_name}' for agent {agent_id}: {e}")
+                    logger.error(traceback.format_exc())
+                    sys.exit(1) # Exit if alias setup fails
+                # End of Alias specific try/except
+            # End of if preparation_successful
+
+        except Exception as e: # Catch errors from the outer try (preparation or unhandled alias error)
+            logger.error(f"Error during agent preparation or alias setup for {agent_id}: {e}")
+            logger.error(traceback.format_exc())
+            sys.exit(1) # Exit if preparation or alias setup fails
+
+    # --- Test Invocation ---
+    # Agent ID and custom alias ID should be valid here
+    if agent_id and agent_alias_id_to_use: # Check both are set
+         session_id = str(uuid.uuid4()) 
+         test_prompt = "Search for information about Project Chimera and format the results using bullet points."
+         logger.info(f"--- Invoking Agent {agent_id} using Alias '{alias_name}' ({agent_alias_id_to_use}) ---") # Updated log
+         test_agent_invocation(
+             agent_runtime_client=bedrock_agent_runtime_client,
+             agent_id=agent_id,
+             agent_alias_id=agent_alias_id_to_use, # Added missing argument
+             session_id=session_id,
+             prompt=test_prompt
+         )
     else:
-        logger.error("Agent ID or Alias ID not available, skipping invocation test.")
+         logger.error("Agent ID or Alias ID not available, skipping invocation test.")
 
-    logger.info("--- Script Execution Finished (Agent Setup & Test Complete) ---")
+    logger.info("--- Script Execution Finished (Agent Setup & Test Complete) --- ")
