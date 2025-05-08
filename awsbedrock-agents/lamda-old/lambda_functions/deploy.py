@@ -15,11 +15,27 @@ from dotenv import load_dotenv
 load_dotenv(os.path.join(os.path.dirname(__file__), "..", ".env"))
 
 def delete_lambda_function(function_name, aws_region):
-    """Delete Lambda function if it exists"""
+    """Delete Lambda function if it exists, attempting to remove permissions first"""
     lambda_client = boto3.client('lambda', region_name=aws_region)
 
     try:
-        # Check if function exists
+        # Attempt to remove the resource-based policy statement first
+        # Use a generic StatementId prefix if possible, or specific ones
+        statement_id = f"AllowBedrockInvoke{function_name.replace('bedrock_agent_', '').title()}"
+        try:
+            print(f"Attempting to remove permission {statement_id} from {function_name}...")
+            lambda_client.remove_permission(
+                FunctionName=function_name,
+                StatementId=statement_id
+            )
+            print(f"Successfully removed permission {statement_id} from {function_name}.")
+            time.sleep(2) # Allow time for permission removal
+        except lambda_client.exceptions.ResourceNotFoundException:
+            print(f"Permission {statement_id} not found on {function_name}. Skipping removal.")
+        except Exception as perm_e:
+            print(f"Warning: Error removing permission {statement_id} from {function_name}: {str(perm_e)}")
+
+        # Check if function exists before attempting deletion
         lambda_client.get_function(FunctionName=function_name)
 
         # Delete function
@@ -41,23 +57,20 @@ def delete_lambda_function(function_name, aws_region):
 
 
 def create_lambda_function(function_name, handler, role_arn, zip_file, aws_region):
-    """Create or update Lambda function with retry logic"""
+    """Create or update Lambda function with retry logic (Removed layers)"""
 
     # Configure the client with increased timeouts
+    # (Ensure config is defined before this call in main)
     config = Config(
-        connect_timeout=120,  # Increased to 2 minutes
-        read_timeout=300,     # Increased to 5 minutes
-        retries={
-            'max_attempts': 5,
-            'mode': 'adaptive'  # Use adaptive retry mode for better handling of throttling
-        }
+        connect_timeout=120,
+        read_timeout=300,
+        retries={'max_attempts': 5, 'mode': 'adaptive'}
     )
-
     lambda_client = boto3.client('lambda', region_name=aws_region, config=config)
 
     # Wait for role to be ready
     print(f"Waiting for role {role_arn} to be ready...")
-    time.sleep(30)  # Increased to 30 seconds for IAM role propagation
+    time.sleep(30)  
 
     # Get zip file size
     with open(zip_file, 'rb') as f:
@@ -65,79 +78,76 @@ def create_lambda_function(function_name, handler, role_arn, zip_file, aws_regio
         zip_size_mb = len(zip_content) / (1024 * 1024)
         print(f"Zip file size: {zip_size_mb:.2f} MB")
 
-    # Always use S3 for deployment if file is larger than 10MB
-    # This helps avoid connection timeouts with direct uploads
     use_s3 = zip_size_mb > 10
     
     if use_s3:
         print(f"File size ({zip_size_mb:.2f} MB) exceeds 10MB. Using S3 for deployment...")
         s3_location = upload_to_s3(zip_file, aws_region)
     
-    # Retry logic with exponential backoff
     max_retries = 5
-    base_delay = 5  # Start with 5 seconds delay
+    base_delay = 5  
     
     for attempt in range(1, max_retries + 1):
         try:
             print(f"Creating function {function_name} (attempt {attempt}/{max_retries})...")
             
+            create_args = {
+                'FunctionName': function_name,
+                'Runtime': 'python3.9',
+                'Role': role_arn,
+                'Handler': handler,
+                'Timeout': 180,
+                'MemorySize': 1536,
+                'Environment': {
+                        'Variables': {
+                            'CB_HOST': os.getenv('CB_HOST', 'couchbase://localhost'),
+                            'CB_USERNAME': os.getenv('CB_USERNAME', 'Administrator'),
+                            'CB_PASSWORD': os.getenv('CB_PASSWORD', 'password'),
+                            'CB_BUCKET_NAME': os.getenv('CB_BUCKET_NAME', 'vector-search-testing'),
+                            'SCOPE_NAME': os.getenv('SCOPE_NAME', 'shared'),
+                            'COLLECTION_NAME': os.getenv('COLLECTION_NAME', 'bedrock'),
+                            'INDEX_NAME': os.getenv('INDEX_NAME', 'vector_search_bedrock')
+                        }
+                    }
+            }
+
             if use_s3:
-                # Deploy from S3
-                lambda_client.create_function(
-                    FunctionName=function_name,
-                    Runtime='python3.9',
-                    Role=role_arn,
-                    Handler=handler,
-                    Code=s3_location,
-                    Timeout=180,  # Increased to 3 minutes
-                    MemorySize=1536,  # Increased to 1.5GB
-                    Environment={
-                        'Variables': {
-                            'CB_HOST': os.getenv('CB_HOST', 'couchbase://localhost'),
-                            'CB_USERNAME': os.getenv('CB_USERNAME', 'Administrator'),
-                            'CB_PASSWORD': os.getenv('CB_PASSWORD', 'password'),
-                            'CB_BUCKET_NAME': os.getenv('CB_BUCKET_NAME', 'vector-search-testing'),
-                            'SCOPE_NAME': os.getenv('SCOPE_NAME', 'shared'),
-                            'COLLECTION_NAME': os.getenv('COLLECTION_NAME', 'bedrock'),
-                            'INDEX_NAME': os.getenv('INDEX_NAME', 'vector_search_bedrock')
-                        }
-                    }
-                )
+                create_args['Code'] = s3_location
             else:
-                # Direct upload for smaller files
-                lambda_client.create_function(
-                    FunctionName=function_name,
-                    Runtime='python3.9',
-                    Role=role_arn,
-                    Handler=handler,
-                    Code={'ZipFile': zip_content},
-                    Timeout=180,  # Increased to 3 minutes
-                    MemorySize=1536,  # Increased to 1.5GB
-                    Environment={
-                        'Variables': {
-                            'CB_HOST': os.getenv('CB_HOST', 'couchbase://localhost'),
-                            'CB_USERNAME': os.getenv('CB_USERNAME', 'Administrator'),
-                            'CB_PASSWORD': os.getenv('CB_PASSWORD', 'password'),
-                            'CB_BUCKET_NAME': os.getenv('CB_BUCKET_NAME', 'vector-search-testing'),
-                            'SCOPE_NAME': os.getenv('SCOPE_NAME', 'shared'),
-                            'COLLECTION_NAME': os.getenv('COLLECTION_NAME', 'bedrock'),
-                            'INDEX_NAME': os.getenv('INDEX_NAME', 'vector_search_bedrock')
-                        }
-                    }
-                )
+                create_args['Code'] = {'ZipFile': zip_content}
+
+            lambda_client.create_function(**create_args)
             
             print(f"Successfully created function {function_name} on attempt {attempt}")
-            return  # Success, exit the retry loop
+
+            # --- Add basic invoke permission --- 
+            time.sleep(5) # Give function time to be fully created before adding policy
+            statement_id = f"AllowBedrockInvokeBasic-{function_name}"
+            try:
+                print(f"Adding basic invoke permission ({statement_id}) to {function_name}...")
+                lambda_client.add_permission(
+                    FunctionName=function_name,
+                    StatementId=statement_id,
+                    Action='lambda:InvokeFunction',
+                    Principal='bedrock.amazonaws.com'
+                    # SourceArn=... # Not specifying SourceArn here
+                )
+                print(f"Successfully added basic invoke permission {statement_id}.")
+            except lambda_client.exceptions.ResourceConflictException:
+                 print(f"Permission {statement_id} already exists for {function_name}. Skipping.")
+            except Exception as perm_e:
+                print(f"Warning: Failed to add basic invoke permission {statement_id} to {function_name}: {perm_e}")
+                # Allow execution to continue, but log the warning
+            # ---------------------------------
+
+            return
             
         except ConnectionClosedError as e:
             print(f"Connection closed error on attempt {attempt}: {str(e)}")
             if attempt < max_retries:
-                # Calculate exponential backoff delay with jitter
                 delay = base_delay * (2 ** (attempt - 1)) + (uuid.uuid4().int % 10)
                 print(f"Retrying in {delay} seconds...")
                 time.sleep(delay)
-                
-                # If direct upload failed, switch to S3 for next attempt
                 if not use_s3:
                     print("Switching to S3 deployment for next attempt...")
                     use_s3 = True
@@ -145,7 +155,6 @@ def create_lambda_function(function_name, handler, role_arn, zip_file, aws_regio
             else:
                 print("Maximum retry attempts reached. Deployment failed.")
                 raise
-                
         except (ServiceNotInRegionError, ClientError) as e:
             print(f"AWS service error on attempt {attempt}: {str(e)}")
             if attempt < max_retries:
@@ -155,15 +164,12 @@ def create_lambda_function(function_name, handler, role_arn, zip_file, aws_regio
             else:
                 print("Maximum retry attempts reached. Deployment failed.")
                 raise
-                
         except Exception as e:
             print(f"Unexpected error on attempt {attempt}: {str(e)}")
             if "Connection was closed" in str(e) and attempt < max_retries:
                 delay = base_delay * (2 ** (attempt - 1))
                 print(f"Connection issue detected. Retrying in {delay} seconds...")
                 time.sleep(delay)
-                
-                # Switch to S3 deployment for next attempt
                 if not use_s3:
                     print("Switching to S3 deployment for next attempt...")
                     use_s3 = True
@@ -177,7 +183,7 @@ def upload_to_s3(zip_file, aws_region, bucket_name=None):
     # Configure the client with increased timeouts
     config = Config(
         connect_timeout=60,
-        read_timeout=120,
+        read_timeout=300,
         retries={'max_attempts': 3, 'mode': 'adaptive'}
     )
     
@@ -265,44 +271,77 @@ def upload_to_s3(zip_file, aws_region, bucket_name=None):
                 raise
 
 def package_function(function_name):
-    """Package Lambda function with dependencies"""
+    """Package Lambda function using the existing Makefile."""
+    makefile_dir = os.path.dirname(os.path.abspath(__file__))
+    makefile_path = os.path.join(makefile_dir, 'Makefile')
+    lambda_subdir = os.path.join(makefile_dir, 'lambda')
+    source_req_path = os.path.join(makefile_dir, 'requirements.txt')
+    target_req_path = os.path.join(lambda_subdir, 'requirements.txt')
+    source_func_script_path = os.path.join(makefile_dir, f'{function_name}.py')
+    target_func_script_path = os.path.join(lambda_subdir, 'lambda_function.py')
+    make_output_zip = os.path.join(makefile_dir, 'lambda_package.zip')
+    final_zip_path = os.path.join(makefile_dir, f'{function_name}.zip')
+
+    if not os.path.exists(source_func_script_path):
+        raise FileNotFoundError(f"Source function script not found: {source_func_script_path}")
+    if not os.path.exists(source_req_path):
+        raise FileNotFoundError(f"Source requirements file not found: {source_req_path}")
+    if not os.path.exists(makefile_path):
+        raise FileNotFoundError(f"Makefile not found at: {makefile_path}")
+
+    print(f"--- Packaging function {function_name} using Makefile --- ")
+
     try:
-        # Create build directory
-        build_dir = f'build_{function_name}'
-        if os.path.exists(build_dir):
-            shutil.rmtree(build_dir)
-        os.makedirs(build_dir)
+        # 1. Create lambda subdirectory
+        os.makedirs(lambda_subdir, exist_ok=True)
+        print(f"Ensured lambda subdirectory exists: {lambda_subdir}")
 
-        # Install dependencies
-        # Get current directory
-        current_dir = os.path.dirname(os.path.abspath(__file__))
+        # 2. Copy files into lambda subdirectory
+        print(f"Copying {source_req_path} to {target_req_path}")
+        shutil.copy(source_req_path, target_req_path)
+        print(f"Copying {source_func_script_path} to {target_func_script_path}")
+        shutil.copy(source_func_script_path, target_func_script_path)
 
-        print(f"Installing dependencies for {function_name}...")
+        # 3. Run make command
+        make_command = [
+            'make',
+            '-f', makefile_path,
+            'clean', # Clean first
+            'package',
+            'PYTHON_VERSION=python3.9' # Override python version
+        ]
+        print(f"Running make command: {' '.join(make_command)} in {makefile_dir}")
+        # Ensure make runs in the directory containing the Makefile
+        # Redirect stdout and stderr to suppress makefile output
+        subprocess.check_call(make_command, cwd=makefile_dir, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
+        print("Make command completed successfully.")
 
-        # Use pip directly to install dependencies to the build directory
-        subprocess.check_call([
-            'pip', 'install',
-            '--no-cache-dir',  # Don't use the pip cache
-            '--upgrade',       # Upgrade packages if needed
-            '--quiet',         # Hide output (except for errors)
-            '--target', build_dir,  # Install to the build directory
-            '-r', os.path.join(current_dir, 'requirements.txt')
-        ])
+        # 4. Check for and rename output zip
+        if not os.path.exists(make_output_zip):
+            raise FileNotFoundError(f"Makefile did not produce expected output: {make_output_zip}")
+        
+        print(f"Renaming {make_output_zip} to {final_zip_path}")
+        if os.path.exists(final_zip_path):
+             os.remove(final_zip_path)
+        os.rename(make_output_zip, final_zip_path)
+        print(f"Zip file ready: {final_zip_path}")
 
-        # Copy function code
-        shutil.copy(
-            os.path.join(current_dir, f'{function_name}.py'),
-            os.path.join(build_dir, 'lambda_function.py')
-        )
+        return final_zip_path
 
-        # Create zip file
-        zip_file = f'{function_name}.zip'
-        shutil.make_archive(function_name, 'zip', build_dir)
-
-        return zip_file
-    except (subprocess.CalledProcessError, OSError) as e:
-        print(f"Error packaging function {function_name}: {str(e)}")
+    except (subprocess.CalledProcessError, OSError, FileNotFoundError) as e:
+        print(f"Error packaging function {function_name} using Makefile: {str(e)}")
+        import traceback
+        print(traceback.format_exc())
         raise
+    finally:
+        # 5. Clean up lambda subdirectory
+        if os.path.exists(lambda_subdir):
+            print(f"Cleaning up lambda subdirectory: {lambda_subdir}")
+            shutil.rmtree(lambda_subdir)
+        # Clean up intermediate package if rename failed somehow
+        if os.path.exists(make_output_zip):
+            print(f"Cleaning up intermediate zip: {make_output_zip}")
+            os.remove(make_output_zip)
 
 def main():
     try:
@@ -316,7 +355,7 @@ def main():
         # Configure the client with increased timeouts
         config = Config(
             connect_timeout=60,
-            read_timeout=120,
+            read_timeout=300, # Keep increased timeout
             retries={'max_attempts': 3, 'mode': 'adaptive'}
         )
 
@@ -329,14 +368,47 @@ def main():
         try:
             role = iam.get_role(RoleName=role_name)
             print(f"Using existing IAM role: {role_name}")
+            # Role exists, ensure the trust policy includes Bedrock
+            print(f"Ensuring trust policy for existing role {role_name} includes Bedrock...")
+            # Define the desired trust policy
+            updated_trust_policy = {
+                "Version": "2012-10-17",
+                "Statement": [{
+                    "Effect": "Allow",
+                    "Principal": {
+                        "Service": [
+                           "lambda.amazonaws.com",
+                           "bedrock.amazonaws.com"
+                        ]
+                    },
+                    "Action": "sts:AssumeRole"
+                }]
+            }
+            try:
+                iam.update_assume_role_policy(
+                    RoleName=role_name,
+                    PolicyDocument=json.dumps(updated_trust_policy)
+                )
+                print(f"Successfully updated trust policy for {role_name}.")
+                # Allow a moment for policy update to potentially propagate
+                time.sleep(5)
+            except Exception as update_e:
+                print(f"Warning: Could not update trust policy for {role_name}: {update_e}")
         except iam.exceptions.NoSuchEntityException:
             print(f"Creating new IAM role: {role_name}")
             # Create role
+            # Updated trust policy to include both Lambda and Bedrock
             trust_policy = {
                 "Version": "2012-10-17",
                 "Statement": [{
                     "Effect": "Allow",
-                    "Principal": {"Service": "lambda.amazonaws.com"},
+                    "Principal": {
+                        # Add both services here
+                        "Service": [
+                           "lambda.amazonaws.com",
+                           "bedrock.amazonaws.com"
+                        ]
+                    },
                     "Action": "sts:AssumeRole"
                 }]
             }
@@ -353,43 +425,6 @@ def main():
                 PolicyArn='arn:aws:iam::aws:policy/service-role/AWSLambdaBasicExecutionRole'
             )
 
-            # Attach Bedrock invoke policy
-            print("Attaching Bedrock invoke policy...")
-            bedrock_policy = {
-                "Version": "2012-10-17",
-                "Statement": [
-                    {
-                        "Effect": "Allow",
-                        "Action": [
-                            "bedrock:InvokeModel",
-                            "bedrock-runtime:InvokeModel",
-                            "bedrock-agent:*",
-                            "bedrock-agent-runtime:*",
-                            "lambda:InvokeFunction",
-                            "s3:GetObject",
-                            "s3:PutObject",
-                            "s3:ListBucket"
-                        ],
-                        "Resource": "*"
-                    },
-                    {
-                        "Effect": "Allow",
-                        "Action": [
-                            "logs:CreateLogGroup",
-                            "logs:CreateLogStream",
-                            "logs:PutLogEvents"
-                        ],
-                        "Resource": "arn:aws:logs:*:*:*"
-                    }
-                ]
-            }
-
-            iam.put_role_policy(
-                RoleName=role_name,
-                PolicyName='bedrock_invoke_policy',
-                PolicyDocument=json.dumps(bedrock_policy)
-            )
-            
             # Wait for role policies to propagate
             print("Waiting for IAM role policies to propagate...")
             time.sleep(15)
@@ -400,12 +435,14 @@ def main():
         delete_lambda_function('bedrock_agent_researcher', aws_region)
         delete_lambda_function('bedrock_agent_writer', aws_region)
 
+        # --- Package and Deploy Functions (Local Pip Install) --- 
+
         # Package and deploy researcher function
         print("\n=== Deploying researcher function ===")
         researcher_zip = package_function('bedrock_agent_researcher')
         create_lambda_function(
             'bedrock_agent_researcher',
-            'lambda_function.lambda_handler',
+            'lambda_function.lambda_handler', # Handler expects lambda_function.py
             role_arn,
             researcher_zip,
             aws_region
@@ -416,13 +453,14 @@ def main():
         writer_zip = package_function('bedrock_agent_writer')
         create_lambda_function(
             'bedrock_agent_writer',
-            'lambda_function.lambda_handler',
+            'lambda_function.lambda_handler', # Handler expects lambda_function.py
             role_arn,
             writer_zip,
             aws_region
         )
 
         print("\nDeployment complete!")
+
     except Exception as e:
         print(f"Deployment failed: {str(e)}")
         raise

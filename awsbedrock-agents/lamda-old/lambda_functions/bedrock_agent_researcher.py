@@ -10,13 +10,7 @@ import json
 import traceback
 
 # Load environment variables from .env file
-# Adjusted path assumption: Assume .env is in the parent dir (lambda-experiments)
-dotenv_path = os.path.join(os.path.dirname(__file__), '..', '.env')
-if os.path.exists(dotenv_path):
-    load_dotenv(dotenv_path=dotenv_path)
-else:
-    # Fallback for Lambda environment where .env might not be present
-    print("Lambda: .env file not found, relying on Lambda environment variables.")
+load_dotenv(os.path.join(os.path.dirname(__file__), "..", ".env"))
 
 def _parse_parameters(parameters_list):
     """Parses the Bedrock Agent's parameter list into a dictionary."""
@@ -32,45 +26,46 @@ def lambda_handler(event, context):
     print(f"--- Researcher Lambda Event: {json.dumps(event)}") 
     
     # --- Get Function Name and Action Group --- 
-    api_path = event.get('apiPath', '')
-    function_name = api_path.split('/')[-1] if api_path else '' # Extract from apiPath
+    # Use 'function' instead of 'apiPath'
+    function_name = event.get('function', '') 
     action_group = event.get('actionGroup', 'researcher_actions') # Keep for response
-    
+    http_method = event.get('httpMethod', 'POST') # Keep for response, though might be irrelevant now
+
     try:
         print("--- Initializing Researcher Lambda ---")
         
         # --- Load Env Vars ---
         print("Loading environment variables...")
-        # Use standard env var names matching the main script setup & Lambda env
         cb_username = os.environ["CB_USERNAME"]
         cb_password = os.environ["CB_PASSWORD"]
         cb_host = os.environ["CB_HOST"]
-        cb_bucket = os.environ["CB_BUCKET_NAME"] # Read standard name
-        cb_scope = os.environ["SCOPE_NAME"]      # Read standard name
-        cb_collection = os.environ["COLLECTION_NAME"] # Read standard name
-        cb_index = os.environ["INDEX_NAME"]       # Read standard name
-        aws_region = os.environ.get("AWS_REGION", "us-east-1") # Get region
-        embedding_model_id = os.environ.get("EMBEDDING_MODEL_ID", "amazon.titan-embed-text-v2:0") # Get embedding model
+        cb_bucket = os.environ["CB_BUCKET_NAME"]
+        cb_scope = os.environ["SCOPE_NAME"]
+        cb_collection = os.environ["COLLECTION_NAME"]
+        cb_index = os.environ["INDEX_NAME"]
         print("Environment variables loaded.")
 
         # --- Initialize Couchbase connection ---
-        print(f"Initializing Couchbase connection to {cb_host}...")
+        print("Initializing Couchbase connection...")
         auth = PasswordAuthenticator(cb_username, cb_password)
+        # Add timeouts
         options = ClusterOptions(auth)
         cluster = Cluster(cb_host, options)
+        # Wait for cluster to be ready? Maybe add cluster.wait_until_ready(timedelta(seconds=5))
         print("Couchbase cluster initialized.")
 
         # --- Initialize Bedrock embeddings ---
-        print(f"Initializing Bedrock client and embeddings (Region: {aws_region}, Model: {embedding_model_id})...")
-        bedrock_runtime = boto3.client('bedrock-runtime', region_name=aws_region) 
+        print("Initializing Bedrock client and embeddings...")
+        # Consider adding region_name explicitly if needed
+        bedrock_runtime = boto3.client('bedrock-runtime') 
         embeddings = BedrockEmbeddings(
             client=bedrock_runtime,
-            model_id=embedding_model_id
+            model_id="amazon.titan-embed-text-v2:0" # Make sure this model is enabled
         )
         print("Bedrock embeddings initialized.")
 
         # --- Initialize vector store ---
-        print(f"Initializing Couchbase vector store ({cb_bucket}/{cb_scope}/{cb_collection}, Index: {cb_index})...")
+        print("Initializing Couchbase vector store...")
         vector_store = CouchbaseSearchVectorStore(
             cluster=cluster,
             bucket_name=cb_bucket,
@@ -81,26 +76,20 @@ def lambda_handler(event, context):
         )
         print("Couchbase vector store initialized.")
 
-        # --- Parse Agent Input (Using requestBody) --- 
-        print("Parsing agent input from requestBody...")
-        input_properties = event.get('requestBody', {}).get('content', {}).get('application/json', {}).get('properties', [])
-        parameters = _parse_parameters(input_properties) # Use existing helper
-        print(f"Function Name (from apiPath): {function_name}")
+        # --- Parse Agent Input (New Schema) --- 
+        print("Parsing agent input (new schema)...")
+        parameters_list = event.get('parameters', [])
+        parameters = _parse_parameters(parameters_list)
+        print(f"Function Name: {function_name}")
         print(f"Parsed Parameters: {parameters}")
 
-        # Check function name (extracted from apiPath)
+        # Check function name instead of api_path
         if function_name == 'search_documents': 
             print("Handling search_documents function...")
             # Extract parameters from parsed dict
             query = parameters.get('query')
             k_param = parameters.get('k', '3') # k might still be string from agent
-            
-            try:
-                 k = int(k_param)
-            except (ValueError, TypeError):
-                 print(f"Warning: Invalid value for k '{k_param}'. Defaulting to 3.")
-                 k = 3
-            
+            k = int(k_param)
             print(f"Search Query: '{query}', k={k}")
 
             if not query:
@@ -123,18 +112,17 @@ def lambda_handler(event, context):
             result_text = "\n\n".join([f"Result {i+1}: {content}" for i, content in enumerate(formatted_results)])
             print("Results formatted.")
             
-            # --- Construct Success Response (TEXT format) --- 
-            print("Constructing TEXT success response...")
+            # --- Construct Success Response (Stack Overflow TEXT format) --- 
+            print("Constructing complex TEXT success response...")
             final_response = {
-                "messageVersion": event.get('messageVersion', '1.0'), 
+                "messageVersion": event.get('messageVersion', '1.0'), # Use version from event or default
                 "response": {
                     "actionGroup": event.get('actionGroup'),
-                    "apiPath": event.get('apiPath'),
-                    "httpMethod": event.get('httpMethod'),
-                    "httpStatusCode": 200,
+                    "function": event.get('function'),
                     "functionResponse": {
                         "responseBody": {
                            "TEXT": { 
+                               # Ensure body is a string
                                "body": result_text if result_text else "No relevant documents found."
                            }
                         }
@@ -142,7 +130,7 @@ def lambda_handler(event, context):
                 }
             }
             
-            print(f"Success response constructed: {json.dumps(final_response)[:500]}...") # Log truncated response
+            print(f"Success response constructed: {json.dumps(final_response)}") # Log the final response
             return final_response
         
         else:
@@ -165,13 +153,12 @@ def lambda_handler(event, context):
             "messageVersion": event.get('messageVersion', '1.0'),
             "response": {
                 "actionGroup": event.get('actionGroup'),
-                "apiPath": event.get('apiPath'),
-                "httpMethod": event.get('httpMethod'),
-                "httpStatusCode": 500,
+                "function": event.get('function'),
                 "functionResponse": {
+                    # Indicate error via responseBody content, not HTTP status equivalent here
                     "responseBody": {
                        "TEXT": { 
-                           "body": f"ERROR: {error_body_text}"
+                           "body": f"ERROR: {error_body_text}" # Embed stringified error
                        }
                     }
                 }
