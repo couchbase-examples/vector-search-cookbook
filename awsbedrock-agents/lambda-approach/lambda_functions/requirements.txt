@@ -1,0 +1,8 @@
+boto3>=1.28.0
+langchain-aws>=0.2.22
+langchain-couchbase>=0.3.0
+langchain-core==0.3.56
+couchbase>=4.3.5
+python-dotenv>=0.21.0
+langsmith>=0.1.17,<0.3
+httpx>=0.23.0,<0.28.0 
