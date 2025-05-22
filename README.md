@@ -76,7 +76,7 @@ For more information on creating a vector search index, please follow the [instr
 {
     "type": "fulltext-index",
     "name": "vector_search_azure",
-    "uuid": "12fe1360b64a69c0",
+    "uuid": "",
     "sourceType": "gocbcore",
     "sourceName": "vector-search-testing",
     "planParams": {

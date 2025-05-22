@@ -1,7 +1,7 @@
 {
     "type": "fulltext-index",
     "name": "vector_search_crew",
-    "uuid": "12fe1360b64a69c0",
+    "uuid": "",
     "sourceType": "gocbcore",
     "sourceName": "vector-search-testing",
     "planParams": {

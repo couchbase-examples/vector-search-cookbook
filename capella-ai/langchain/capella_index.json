@@ -1,7 +1,7 @@
 {
   "type": "fulltext-index",
   "name": "model_tutorial.rag.vs-index",
-  "uuid": "7377c28e3b64270f",
+  "uuid": "",
   "sourceType": "gocbcore",
   "sourceName": "model_tutorial",
   "planParams": {
