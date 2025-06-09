@@ -1,10 +1,9 @@
 {
   "type": "fulltext-index",
   "name": "model_tutorial.rag.vs-index",
-  "uuid": "7377c28e3b64270f",
+  "uuid": "",
   "sourceType": "gocbcore",
   "sourceName": "model_tutorial",
-  "sourceUUID": "23a9a323ea50144479be8c1deb2a3ad0",
   "planParams": {
     "maxPartitionsPerPIndex": 1024,
     "indexPartitions": 1

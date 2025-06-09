@@ -1,6 +1,6 @@
 {
     "type": "fulltext-index",
-    "name": "vector_search_crew",
+    "name": "vector_search_deepseek",
     "uuid": "",
     "sourceType": "gocbcore",
     "sourceName": "vector-search-testing",
@@ -30,7 +30,7 @@
         "store_dynamic": false,
         "type_field": "_type",
         "types": {
-          "shared.crew": {
+          "shared.deepseek": {
             "dynamic": true,
             "enabled": true,
             "properties": {

@@ -69,7 +69,6 @@
  },
  "sourceType": "couchbase",
  "sourceName": "mistralai",
- "sourceUUID": "2c2e8a2d88811b8818fac622a62aba03",
  "sourceParams": {},
  "planParams": {
   "maxPartitionsPerPIndex": 1024,
