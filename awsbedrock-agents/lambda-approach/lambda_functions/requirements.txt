@@ -1,0 +1,4 @@
+boto3>=1.28.0
+langchain-aws>=0.2.22
+langchain-couchbase>=0.3.0
+python-dotenv>=1.1.0
