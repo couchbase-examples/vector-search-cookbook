@@ -2,6 +2,10 @@
 
 This repository demonstrates how to build a powerful semantic search engine using Couchbase as the backend database, combined with various AI-powered embedding and language model providers such as OpenAI, Azure OpenAI, Anthropic (Claude), Cohere, Hugging Face, Jina AI, Mistral AI, and Voyage AI.
 
+Each example provides two distinct approaches:
+- **FTS (Full Text Search)**: Uses Couchbase's vector search capabilities with pre-created search indices
+- **GSI (Global Secondary Index)**: Leverages Couchbase's native SQL++ queries with vector similarity functions
+
 Semantic search goes beyond simple keyword matching by understanding the context and meaning behind the words in a query, making it essential for applications that require intelligent information retrieval.
 
 ## Features
@@ -27,10 +31,13 @@ Semantic search goes beyond simple keyword matching by understanding the context
    cd vector-search-cookbook
    ```
 
-### 2. Set up the Couchbase Vector Search Index:
+### 2. Choose Your Approach:
 
-Use the provided `{model}_index.json` index definition file in each model's directory to create a new index in your Couchbase cluster.
-The index supports separate properties for each embedding model.
+#### For FTS (Full Text Search) Examples:
+Use the provided `{model}_index.json` index definition file in each model's `fts/` directory to create a new vector search index in your Couchbase cluster.
+
+#### For GSI (Global Secondary Index) Examples:
+No additional setup required. GSI index will be created in each model's example.
 
 ### 3. Run the notebook file
 
@@ -68,9 +75,9 @@ Each notebook implements a semantic search function that performs similarity sea
 
 The system implements caching functionality using `CouchbaseCache` to improve performance for repeated queries.
 
-## Couchbase Vector Search Index
+## Couchbase Vector Search Index (FTS Approach Only)
 
-For more information on creating a vector search index, please follow the [instructions](https://docs.couchbase.com/cloud/vector-search/create-vector-search-index-ui.html). The following is an example for Azure OpenAI Model.
+For FTS examples, you'll need to create a vector search index using the provided JSON configuration files. For more information on creating a vector search index, please follow the [instructions](https://docs.couchbase.com/cloud/vector-search/create-vector-search-index-ui.html). The following is an example for Azure OpenAI Model.
 
 ```json
 {
@@ -147,11 +154,3 @@ For more information on creating a vector search index, please follow the [instr
     "sourceParams": {}
   }
 ```
-
-## Contributing
-
-Contributions are welcome! Please feel free to submit a pull request or open an issue for any bugs or feature requests.
-
-## License
-
-This project is licensed under the MIT License. See the [LICENSE](LICENSE) file for details.
