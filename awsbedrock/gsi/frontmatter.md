@@ -1,10 +1,10 @@
 ---
 # frontmatter
 path: "/tutorial-aws-bedrock-couchbase-rag"
-title: Retrieval-Augmented Generation (RAG) with Couchbase and Amazon Bedrock using FTS index
+title: Retrieval-Augmented Generation (RAG) with Couchbase and Amazon Bedrock using GSI index
 short_title: RAG with Couchbase and Amazon Bedrock
 description:
-  - Learn how to build a semantic search engine using Couchbase and Amazon Bedrock using FTS.
+  - Learn how to build a semantic search engine using Couchbase and Amazon Bedrock using GSI.
   - This tutorial demonstrates how to integrate Couchbase's vector search capabilities with Amazon Bedrock's Titan embeddings and Claude language model.
   - You'll understand how to perform Retrieval-Augmented Generation (RAG) using LangChain and Couchbase.
 content_type: tutorial
