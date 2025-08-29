@@ -1,6 +1,6 @@
 ---
 # frontmatter
-path: "/tutorial-aws-bedrock-couchbase-rag"
+path: "/tutorial-gsi-aws-bedrock-couchbase-rag"
 title: Retrieval-Augmented Generation (RAG) with Couchbase and Amazon Bedrock using GSI index
 short_title: RAG with Couchbase and Amazon Bedrock
 description:

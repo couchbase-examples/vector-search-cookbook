@@ -1,6 +1,6 @@
 ---
 # frontmatter
-path: "/tutorial-aws-bedrock-couchbase-rag"
+path: "/tutorial-fts-aws-bedrock-couchbase-rag"
 title: Retrieval-Augmented Generation (RAG) with Couchbase and Amazon Bedrock using FTS index
 short_title: RAG with Couchbase and Amazon Bedrock
 description:
