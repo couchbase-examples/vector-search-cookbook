@@ -1,8 +1,8 @@
 ---
 # frontmatter
-path: "/tutorial-gsi-aws-bedrock-couchbase-rag"
+path: "/tutorial-aws-bedrock-couchbase-rag-with-global-secondary-index"
 title: Retrieval-Augmented Generation (RAG) with Couchbase and Amazon Bedrock using GSI index
-short_title: RAG with Couchbase and Amazon Bedrock
+short_title: RAG with Couchbase and Amazon Bedrock using GSI index
 description:
   - Learn how to build a semantic search engine using Couchbase and Amazon Bedrock using GSI.
   - This tutorial demonstrates how to integrate Couchbase's vector search capabilities with Amazon Bedrock's Titan embeddings and Claude language model.
