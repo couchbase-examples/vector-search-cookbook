@@ -10,8 +10,6 @@ content_type: tutorial
 filter: sdk
 technology:
   - vector search
-  - auto-vectorization
-  - AI services
 tags:
   - LangChain
 sdk_language:
