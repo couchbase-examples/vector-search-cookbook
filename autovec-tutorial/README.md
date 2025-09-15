@@ -24,7 +24,7 @@ The main tutorial is contained in the Jupyter notebook `autovec_langchain.ipynb`
 
 1. **Clone or download this repository**
    ```bash
-   git clone <repository-url>
+   git clone https://github.com/couchbase-examples/vector-search-cookbook.git
    cd vector-search-cookbook/autovec-tutorial
    ```
 
