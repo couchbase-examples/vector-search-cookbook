@@ -14,8 +14,6 @@ technology:
   - AI services
 tags:
   - LangChain
-  - Auto-Vectorization
-  - Capella AI Services
 sdk_language:
   - python
 length: 20 Mins
