@@ -16,6 +16,7 @@ tags:
   - LangChain
   - OpenAI
   - smolagents
+  - FTS
 sdk_language:
   - python
 length: 30 Mins
