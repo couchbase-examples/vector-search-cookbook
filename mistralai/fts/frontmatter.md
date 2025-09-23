@@ -14,6 +14,7 @@ technology:
 tags:
   - Artificial Intelligence
   - Mistral AI
+  - FTS
 sdk_language:
   - python
 length: 30 Mins
