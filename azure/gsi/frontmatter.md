@@ -1,10 +1,10 @@
 ---
 # frontmatter
-path: "/tutorial-azure-openai-couchbase-rag"
-title: Retrieval-Augmented Generation (RAG) with Couchbase and Azure OpenAI
-short_title: RAG with Couchbase and Azure OpenAI
+path: "/tutorial-azure-openai-couchbase-rag-with-global-secondary-index"
+title: Retrieval-Augmented Generation (RAG) with Couchbase and Azure OpenAI using GSI index
+short_title: RAG with Couchbase and Azure OpenAI using GSI index
 description:
-  - Learn how to build a semantic search engine using Couchbase and Azure OpenAI.
+  - Learn how to build a semantic search engine using Couchbase and Azure OpenAI using GSI.
   - This tutorial demonstrates how to integrate Couchbase's vector search capabilities with Azure OpenAI embeddings.
   - You'll understand how to perform Retrieval-Augmented Generation (RAG) using LangChain and Couchbase.
 content_type: tutorial
