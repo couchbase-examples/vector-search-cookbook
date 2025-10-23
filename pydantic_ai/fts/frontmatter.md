@@ -1,6 +1,6 @@
 ---
 # frontmatter
-path: "/tutorial-pydantic-ai-couchbase-rag"
+path: "/tutorial-pydantic-ai-couchbase-rag-with-fts"
 title: Retrieval-Augmented Generation (RAG) with Couchbase and PydanticAI using FTS
 short_title: RAG with Couchbase and PydanticAI
 description:
