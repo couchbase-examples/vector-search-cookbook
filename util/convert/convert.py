@@ -61,7 +61,11 @@ for notebook_path in glob(f"{project_dir}/**/*.ipynb", recursive=True):
 
     # Generate the output file path
     notebook_name = os.path.splitext(os.path.basename(notebook_path))[0]
-    markdown_file = os.path.join(markdown_dir, f"{notebook_name}.md")
+    # Get the directory path relative to the project_dir
+    dir_path = os.path.dirname(relative_path)
+    # Replace slashes with hyphens
+    dir_name = dir_path.replace(os.sep, "-")
+    markdown_file = os.path.join(markdown_dir, f"{dir_name}-{notebook_name}.md")
 
     # Write the combined markdown to a file
     with open(markdown_file, "w", encoding="utf-8") as f:
