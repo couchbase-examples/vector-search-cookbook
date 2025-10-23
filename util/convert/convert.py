@@ -65,7 +65,11 @@ for notebook_path in glob(f"{project_dir}/**/*.ipynb", recursive=True):
     dir_path = os.path.dirname(relative_path)
     # Replace slashes with hyphens
     dir_name = dir_path.replace(os.sep, "-")
-    markdown_file = os.path.join(markdown_dir, f"{dir_name}-{notebook_name}.md")
+
+    if dir_name:
+        markdown_file = os.path.join(markdown_dir, f"{dir_name}-{notebook_name}.md")
+    else:
+        markdown_file = os.path.join(markdown_dir, f"{notebook_name}.md")
 
     # Write the combined markdown to a file
     with open(markdown_file, "w", encoding="utf-8") as f:
