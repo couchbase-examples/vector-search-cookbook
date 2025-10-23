@@ -1,6 +1,6 @@
 ---
 # frontmatter
-path: "/tutorial-smolagents-couchbase-rag"
+path: "/tutorial-smolagents-couchbase-rag-with-fts"
 title: Retrieval-Augmented Generation (RAG) with Couchbase and smolagents
 short_title: RAG with Couchbase and smolagents
 description:
