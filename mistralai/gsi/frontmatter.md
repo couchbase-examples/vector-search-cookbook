@@ -1,6 +1,6 @@
 ---
 # frontmatter
-path: "/tutorial-mistralai-couchbase-vector-search-using-global-search-indexes"
+path: "/tutorial-mistralai-couchbase-vector-search-with-global-secondary-index"
 title: Using Mistral AI Embeddings using GSI Index
 short_title: Mistral AI with Couchbase GSI Index
 description:
