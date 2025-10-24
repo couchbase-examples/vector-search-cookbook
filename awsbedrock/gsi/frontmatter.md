@@ -12,6 +12,7 @@ filter: sdk
 technology:
   - vector search
 tags:
+  - GSI
   - Artificial Intelligence
   - LangChain
   - Amazon Bedrock
