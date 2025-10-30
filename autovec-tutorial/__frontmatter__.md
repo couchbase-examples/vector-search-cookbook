@@ -9,7 +9,7 @@ description:
 content_type: tutorial
 filter: sdk
 technology:
-  - vector search
+  - Artificial Intelligence
 tags:
   - LangChain
 sdk_language:
