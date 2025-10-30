@@ -1,7 +1,7 @@
 ---
 # frontmatter
 path: "/tutorial-openai-llamaindex-rag"
-title: "Retrieval-Augmented Generation (RAG) with Openai and LlamaIndex"
+title: "Retrieval-Augmented Generation (RAG) with OpenAI and LlamaIndex"
 short_title: "RAG with Openai and LlamaIndex"
 description:
   - Learn how to build a semantic search engine using Couchbase Capella's GSI vector search.

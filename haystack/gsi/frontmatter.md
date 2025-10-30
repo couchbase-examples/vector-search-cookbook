@@ -1,7 +1,7 @@
 ---
 # frontmatter
 path: "/tutorial-openai-haystack-rag"
-title: "Retrieval-Augmented Generation (RAG) with Openai and Haystack"
+title: "Retrieval-Augmented Generation (RAG) with OpenAI and Haystack"
 short_title: "RAG with Openai and Haystack"
 description:
   - Learn how to build a semantic search engine using Couchbase Capella's GSI vector search.
