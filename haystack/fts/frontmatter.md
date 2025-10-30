@@ -12,7 +12,7 @@ filter: sdk
 technology:
   - vector search
 tags:
-  - Openai
+  - OpenAI
   - Artificial Intelligence
   - Haystack
   - FTS
