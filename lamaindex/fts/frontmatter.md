@@ -14,7 +14,7 @@ technology:
 tags:
   - OpenAI
   - Artificial Intelligence
-  - Llamaindex
+  - LlamaIndex
   - FTS
 sdk_language:
   - python

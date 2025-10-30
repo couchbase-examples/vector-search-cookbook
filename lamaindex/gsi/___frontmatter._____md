@@ -14,7 +14,7 @@ technology:
 tags:
   - OpenAI
   - Artificial Intelligence
-  - Llamaindex
+  - LlamaIndex
   - GSI
 sdk_language:
   - python
