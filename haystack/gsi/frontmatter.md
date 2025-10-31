@@ -1,8 +1,8 @@
 ---
 # frontmatter
-path: "/tutorial-openai-haystack-rag"
-title: "Retrieval-Augmented Generation (RAG) with OpenAI and Haystack"
-short_title: "RAG with Openai and Haystack"
+path: "/tutorial-openai-haystack-rag-with-global-secondary-index"
+title: "Retrieval-Augmented Generation (RAG) with OpenAI and Haystack with GSI"
+short_title: "RAG with Openai and Haystack with GSI"
 description:
   - Learn how to build a semantic search engine using Couchbase's GSI vector index.
   - This tutorial demonstrates how to integrate Couchbase's GSI vector search capabilities with OpenAI embeddings.
