@@ -1,6 +1,6 @@
 ---
 # frontmatter
-path: "/tutorial-openai-llamaindex-rag"
+path: "/tutorial-openai-llamaindex-rag-with-fts"
 title: "Retrieval-Augmented Generation (RAG) with OpenAI and LlamaIndex"
 short_title: "RAG with Openai and LlamaIndex"
 description:
