@@ -1,6 +1,6 @@
 ---
 # frontmatter
-path: "/tutorial-openai-haystack-rag"
+path: "/tutorial-openai-haystack-rag-with-gsi"
 title: "Retrieval-Augmented Generation (RAG) with OpenAI and Haystack"
 short_title: "RAG with Openai and Haystack"
 description:
