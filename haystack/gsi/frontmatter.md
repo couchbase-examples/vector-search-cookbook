@@ -1,10 +1,10 @@
 ---
 # frontmatter
 path: "/tutorial-openai-haystack-rag-with-gsi"
-title: "Retrieval-Augmented Generation (RAG) with OpenAI and Haystack"
-short_title: "RAG with Openai and Haystack"
+title: "Retrieval-Augmented Generation (RAG) with OpenAI, Haystack and Couchbase Hyperscale and Composite Vector Indexes"
+short_title: "RAG with OpenAI Haystack and Couchbase Hyperscale and Composite Vector Indexes"
 description:
-  - Learn how to build a semantic search engine using Couchbase's GSI vector index.
+  - Learn how to build a semantic search engine using Couchbase's Hyperscale and Composite Vector Indexes.
   - This tutorial demonstrates how to integrate Couchbase's GSI vector search capabilities with OpenAI embeddings.
   - You will understand how to perform Retrieval-Augmented Generation (RAG) using Haystack, Couchbase and OpenAI services.
 content_type: tutorial

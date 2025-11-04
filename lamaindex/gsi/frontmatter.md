@@ -1,10 +1,10 @@
 ---
 # frontmatter
 path: "/tutorial-openai-llamaindex-rag-with-gsi"
-title: "Retrieval-Augmented Generation (RAG) with OpenAI and LlamaIndex"
-short_title: "RAG with Openai and LlamaIndex"
+title: "Retrieval-Augmented Generation (RAG) with OpenAI, LlamaIndex and Couchbase Hyperscale and Composite Vector Indexes"
+short_title: "RAG with Openai, LlamaIndex and Couchbase Hyperscale and Composite Vector Indexes"
 description:
-  - Learn how to build a semantic search engine using Couchbase's GSI vector search.
+  - Learn how to build a semantic search engine using Couchbase's Hyperscale and Composite Vector Indexes.
   - This tutorial demonstrates how to integrate Couchbase's GSI vector search capabilities with OpenAI embeddings.
   - You will understand how to perform Retrieval-Augmented Generation (RAG) using LlamaIndex and GSI vector indexes.
 content_type: tutorial
