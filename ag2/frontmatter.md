@@ -12,6 +12,7 @@ filter: sdk
 technology:
   - vector search
 tags:
+  - FTS
   - Artificial Intelligence
   - Autogen
   - Ag2
