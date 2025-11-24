@@ -1,12 +1,12 @@
 ---
 # frontmatter
 path: "/tutorial-mistralai-couchbase-vector-search-with-hyperscale-or-composite-vector-index"
-title: Using Mistral AI Embeddings with Couchbase Hyperscale and Composite Vector Index Index
-short_title: Mistral AI with Couchbase with Couchbase Hyperscale and Composite Vector Index Index
+title: Using Mistral AI Embeddings with Couchbase Hyperscale and Composite Vector Index
+short_title: Mistral AI with Couchbase with Couchbase Hyperscale and Composite Vector Index
 description:
   - Learn how to generate embeddings using Mistral AI and store them in Couchbase with Couchbase Hyperscale and Composite Vector Index.
-  - This tutorial demonstrates how to use Couchbase's GSI index capabilities with Mistral AI embeddings.
-  - You'll understand how to perform optimized vector search using Global Secondary Index for better performance.
+  - This tutorial demonstrates how to use Couchbase's Hyperscale and Composite Vector Index capabilities with Mistral AI embeddings.
+  - You'll understand how to perform optimized vector search using Hyperscale and Composite Vector Index for better performance.
 content_type: tutorial
 filter: sdk
 technology:

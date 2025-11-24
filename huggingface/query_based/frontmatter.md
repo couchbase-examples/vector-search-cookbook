@@ -6,7 +6,7 @@ short_title: Hugging Face with Couchbase Vector Search with Couchbase Hyperscale
 description:
   - Learn how to generate embeddings using Hugging Face and store them in Couchbase.
   - This tutorial demonstrates how to use Couchbase's vector search capabilities with Hugging Face embeddings.
-  - You'll understand how to perform vector search to find relevant documents based on similarity with GSI.
+  - You'll understand how to perform vector search to find relevant documents based on similarity with Couchbase Hyperscale and Composite Vector Index.
 content_type: tutorial
 filter: sdk
 technology:

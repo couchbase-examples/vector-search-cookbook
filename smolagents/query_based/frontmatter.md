@@ -5,8 +5,8 @@ title: Retrieval-Augmented Generation (RAG) with Couchbase and smolagents with C
 short_title: RAG with Couchbase and smolagents with Couchbase Hyperscale and Composite Vector Index
 description:
   - Learn how to build a semantic search engine using Couchbase and Hugging Face smolagents with Couchbase Hyperscale and Composite Vector Index.
-  - This tutorial demonstrates how to integrate Couchbase's vector search capabilities with smolagents with Couchbase Hyperscale and Composite Vector Index.es.
-  - You'll understand how to perform Retrieval-Augmented Generation (RAG) using smolagents and Couchbase with GSI optimization.
+  - This tutorial demonstrates how to integrate Couchbase's vector search capabilities with smolagents with Couchbase Hyperscale and Composite Vector Indexes.
+  - You'll understand how to perform Retrieval-Augmented Generation (RAG) using smolagents and Couchbase with Couchbase Hyperscale and Composite Vector Index optimization.
 content_type: tutorial
 filter: sdk
 technology:

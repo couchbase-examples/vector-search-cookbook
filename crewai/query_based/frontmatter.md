@@ -6,7 +6,7 @@ short_title: RAG with Couchbase and CrewAI with Couchbase Hyperscale and Composi
 description:
   - Learn how to build a semantic search engine using Couchbase and CrewAI.
   - This tutorial demonstrates how to integrate Couchbase's vector search capabilities with CrewAI's agent-based approach.
-  - You'll understand how to perform Retrieval-Augmented Generation (RAG) using LangChain, CrewAI, and Couchbase with GSI.
+  - You'll understand how to perform Retrieval-Augmented Generation (RAG) using LangChain, CrewAI, and Couchbase with Couchbase Hyperscale and Composite Vector Index.
 content_type: tutorial
 filter: sdk
 technology:
