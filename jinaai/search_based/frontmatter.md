@@ -1,6 +1,6 @@
 ---
 # frontmatter
-path: "/tutorial-jina-couchbase-rag-with-fts"
+path: "/tutorial-jina-couchbase-rag-with-search-vector-index"
 title: Retrieval-Augmented Generation (RAG) with Couchbase and Jina AI using FTS
 short_title: RAG with Couchbase and Jina
 description:
@@ -12,7 +12,7 @@ filter: sdk
 technology:
   - vector search
 tags:
-  - FTS
+  - Search Vector Index
   - Artificial Intelligence
   - LangChain
   - Jina AI
