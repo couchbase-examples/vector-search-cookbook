@@ -5,7 +5,7 @@ title: RAG with Capella Model Services, LangChain and Couchbase Search Vector In
 short_title: RAG with Capella Model Services, LangChain and Search Vector Index
 description:
   - Learn how to build a semantic search engine using models from Capella Model Services and Couchbase Search Vector Index.
-  - You will understand how to perform Retrieval-Augmented Generation (RAG) using LangChain and Capella Model services.
+  - You will understand how to perform Retrieval-Augmented Generation (RAG) using LangChain and Capella Model Services.
 content_type: tutorial
 filter: sdk
 technology:
