@@ -1,7 +1,7 @@
 ---
 # frontmatter
 path: "/tutorial-capella-model-services-langchain-rag-with-search-vector-index"
-title: Retrieval-Augmented Generation (RAG) with Capella Model Services, LangChain and Couchbase Search Vector Index
+title: RAG with Capella Model Services, LangChain and Couchbase Search Vector Index
 short_title: RAG with Capella Model Services, LangChain and Search Vector Index
 description:
   - Learn how to build a semantic search engine using models from Capella Model Services and Couchbase Search Vector Index.
