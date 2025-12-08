@@ -2,7 +2,7 @@
 # frontmatter
 path: "/tutorial-jina-couchbase-rag-with-hyperscale-or-composite-vector-index"
 title: RAG with Jina AI using Couchbase Hyperscale and Composite Vector Index
-short_title: RAG with Jina AI using Couchbase Hyperscale and Composite Vector Index and
+short_title: RAG with Jina AI using Couchbase Hyperscale and Composite Vector Index
 description:
   - Learn how to build a semantic search engine using Couchbase and Jina.
   - This tutorial demonstrates how to integrate Couchbase's vector search capabilities with Jina embeddings and language models.
