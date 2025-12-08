@@ -1,8 +1,8 @@
 ---
 # frontmatter
-path: "/tutorial-crewai-couchbase-rag-with-fts"
-title: Retrieval-Augmented Generation (RAG) with Couchbase and CrewAI using FTS Service
-short_title: RAG with Couchbase and CrewAI using FTS
+path: "/tutorial-crewai-couchbase-rag-with-search-vector-index"
+title: Retrieval-Augmented Generation (RAG) with CrewAI using Couchbase Search Vector Index
+short_title: RAG with CrewAI using Couchbase Search Vector Index
 description:
   - Learn how to build a semantic search engine using Couchbase and CrewAI.
   - This tutorial demonstrates how to integrate Couchbase's vector search capabilities with CrewAI's agent-based approach.
@@ -12,7 +12,7 @@ filter: sdk
 technology:
   - vector search
 tags:
-  - FTS
+  - Search Vector Index
   - Artificial Intelligence
   - LangChain
   - CrewAI
