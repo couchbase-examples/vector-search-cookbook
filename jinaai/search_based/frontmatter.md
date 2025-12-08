@@ -1,7 +1,7 @@
 ---
 # frontmatter
 path: "/tutorial-jina-couchbase-rag-with-search-vector-index"
-title: Retrieval-Augmented Generation (RAG) with Jina AI using Couchbase Search Vector Index
+title: RAG with Jina AI using Couchbase Search Vector Index
 short_title: RAG with Couchbase Search Vector Index and Jina
 description:
   - Learn how to build a semantic search engine using Couchbase and Jina.
