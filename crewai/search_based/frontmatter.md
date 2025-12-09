@@ -1,7 +1,7 @@
 ---
 # frontmatter
 path: "/tutorial-crewai-couchbase-rag-with-search-vector-index"
-title: Retrieval-Augmented Generation (RAG) with CrewAI and Couchbase Search Vector Index
+title: RAG with CrewAI and Couchbase Search Vector Index
 short_title: RAG with CrewAI and Couchbase Search Vector Index
 description:
 description:
