@@ -39,7 +39,7 @@
               "enabled": true,
               "fields": [
                 {
-                  "dims": 4096,
+                  "dims": 2048,
                   "index": true,
                   "name": "embedding",
                   "similarity": "dot_product",
