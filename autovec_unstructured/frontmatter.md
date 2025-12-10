@@ -8,8 +8,10 @@ This comprehensive tutorial demonstrates how to use Couchbase Capella's new AI S
 content_type: tutorial
 filter: sdk
 technology:
-  - Artificial Intelligence
+  - vector search
 tags:
+  - Hyperscale Vector Index
+  - Artificial Intelligence
   - LangChain
 sdk_language:
   - python
