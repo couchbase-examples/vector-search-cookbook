@@ -1,6 +1,6 @@
 ---
 # frontmatter
-path: "/tutorial-couchbase-autovectorization-workdlows-with-unstructured-data-and-langchain"
+path: "/tutorial-couchbase-autovectorization-workflows-with-unstructured-data-and-langchain"
 title: Auto-Vectorization on Unstructured Data Stored in S3 Buckets Using Couchbase Capella AI Services 
 short_title: Auto-Vectorization on Unstructured Data Stored in S3 Buckets
 description:
