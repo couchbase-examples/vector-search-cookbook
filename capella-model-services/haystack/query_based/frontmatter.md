@@ -12,7 +12,6 @@ filter: sdk
 technology:
   - vector search
 tags:
-  - Capella Model Services
   - Artificial Intelligence
   - Haystack
   - Hyperscale Vector Index

@@ -13,6 +13,7 @@ technology:
   - vector search
 tags:
   - Artificial Intelligence
+  - Search Vector Index
   - Haystack
 sdk_language:
   - python
