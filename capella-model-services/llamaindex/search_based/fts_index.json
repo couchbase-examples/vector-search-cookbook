@@ -48,7 +48,7 @@
                   {
                     "vector_index_optimized_for": "recall",
                     "docvalues": true,
-                    "dims": 4096,
+                    "dims": 1024,
                     "include_in_all": false,
                     "include_term_vectors": false,
                     "index": true,
