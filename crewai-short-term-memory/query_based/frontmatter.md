@@ -3,7 +3,7 @@
 path: "/tutorial-crewai-short-term-memory-couchbase-with-hyperscale-or-composite-vector-index"
 alt_paths: ["/tutorial-crewai-short-term-memory-couchbase-with-hyperscale-vector-index", "/tutorial-crewai-short-term-memory-couchbase-with-composite-vector-index"]
 title: Implement Short-Term Memory for CrewAI Agents with Couchbase Hyperscale and Composite Vector Index
-short_title: CrewAI Short-Term Memory with Couchbase Hyperscale and Composite Vector Index
+short_title: CrewAI Short-Term Memory with Hyperscale & Composite Index
 description:
   - Learn how to implement short-term memory for CrewAI agents using Couchbase's vector search capabilities with Hyperscale and Composite Vector Indexes.
   - This tutorial demonstrates how to store and retrieve agent interactions using semantic search with high-performance GSI vector indexes.
