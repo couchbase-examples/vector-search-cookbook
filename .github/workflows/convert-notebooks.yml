@@ -36,9 +36,9 @@ jobs:
           ssh-key: ${{ secrets.TUTORIAL_SSH_KEY }}
           path: couchbase-tutorials
 
-      - name: Copy converted files
+      - name: Copy converted files and delete old files
         run: |
-          rsync -av --checksum --include="*.md" --exclude="*" util/convert/output_md/ couchbase-tutorials/tutorial/markdown/generated/vector-search-cookbook
+          rsync -av --checksum --include="*.md" --exclude="*" --delete util/convert/output_md/ couchbase-tutorials/tutorial/markdown/generated/vector-search-cookbook
 
       - name: Commit and push changes to couchbase-tutorials repo
         working-directory: couchbase-tutorials
