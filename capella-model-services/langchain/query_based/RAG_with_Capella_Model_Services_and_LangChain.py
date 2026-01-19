@@ -10,11 +10,12 @@ This uses CouchbaseQueryVectorStore with Hyperscale/Composite Vector Indexes
 for high-performance vector search using Couchbase's Query Service.
 """
 
-import getpass
 import logging
-import sys
+import os
 import time
 from datetime import timedelta
+
+from dotenv import load_dotenv
 
 from couchbase.auth import PasswordAuthenticator
 from couchbase.cluster import Cluster
@@ -37,23 +38,25 @@ from tqdm import tqdm
 logging.basicConfig(level=logging.INFO, format='%(asctime)s - %(levelname)s - %(message)s')
 
 # =============================================================================
-# Configuration - Load sensitive information
+# Configuration - Load from .env file
 # =============================================================================
+load_dotenv()
+
 print("=" * 60)
 print("RAG with Capella Model Services and Hyperscale Vector Index")
 print("=" * 60)
 
-CB_CONNECTION_STRING = getpass.getpass("Enter your Couchbase Connection String: ")
-CB_USERNAME = input("Enter your Couchbase Database username: ")
-CB_PASSWORD = getpass.getpass("Enter your Couchbase Database password: ")
-CB_BUCKET_NAME = input("Enter your Couchbase bucket name: ")
-SCOPE_NAME = input("Enter your scope name: ")
-COLLECTION_NAME = input("Enter your collection name: ")
-CAPELLA_MODEL_SERVICES_ENDPOINT = getpass.getpass("Enter your Capella Model Services Endpoint: ")
-LLM_MODEL_NAME = input("Enter the LLM name: ")
-LLM_API_KEY = getpass.getpass("Enter your Couchbase LLM API Key: ")
-EMBEDDING_MODEL_NAME = input("Enter the Embedding Model name: ")
-EMBEDDING_API_KEY = getpass.getpass("Enter your Couchbase Embedding Model API Key: ")
+CB_CONNECTION_STRING = os.getenv("CB_CONNECTION_STRING")
+CB_USERNAME = os.getenv("CB_USERNAME")
+CB_PASSWORD = os.getenv("CB_PASSWORD")
+CB_BUCKET_NAME = os.getenv("CB_BUCKET_NAME")
+SCOPE_NAME = os.getenv("SCOPE_NAME")
+COLLECTION_NAME = os.getenv("COLLECTION_NAME")
+CAPELLA_MODEL_SERVICES_ENDPOINT = os.getenv("CAPELLA_MODEL_SERVICES_ENDPOINT")
+LLM_MODEL_NAME = os.getenv("LLM_MODEL_NAME")
+LLM_API_KEY = os.getenv("LLM_API_KEY")
+EMBEDDING_MODEL_NAME = os.getenv("EMBEDDING_MODEL_NAME")
+EMBEDDING_API_KEY = os.getenv("EMBEDDING_API_KEY")
 
 # Validate inputs
 if not all([
@@ -260,7 +263,8 @@ print("-" * 60)
 
 try:
     vector_store.create_index(
-        index_type=IndexType.HYPERSCALE,  # Use IndexType.COMPOSITE for filtered searches
+        index_type=IndexType.BHIVE,  # Use IndexType.COMPOSITE for filtered searches
+        index_name="langchain_bhive_index",
         index_description="IVF,SQ8"
     )
     print("Hyperscale vector index created successfully")
@@ -276,10 +280,41 @@ except Exception as e:
         print(f"Error creating Hyperscale vector index: {str(e)}")
 
 # =============================================================================
-# Performance Test: With Hyperscale Index
+# Performance Test: With BHIVE (Hyperscale) Index
 # =============================================================================
-print("\nTest 2: Hyperscale-Optimized Performance")
-hyperscale_time = test_vector_search_performance(vector_store, test_query, "Hyperscale")
+print("\nTest 2: BHIVE (Hyperscale) Optimized Performance")
+bhive_time = test_vector_search_performance(vector_store, test_query, "BHIVE")
+
+# =============================================================================
+# Create Composite Vector Index
+# =============================================================================
+print("\n" + "-" * 60)
+print("Creating Composite Vector Index...")
+print("-" * 60)
+
+try:
+    vector_store.create_index(
+        index_type=IndexType.COMPOSITE,
+        index_name="langchain_composite_index",
+        index_description="IVF,SQ8"
+    )
+    print("Composite vector index created successfully")
+
+    # Wait for index to become available
+    print("Waiting for index to become available...")
+    time.sleep(5)
+
+except Exception as e:
+    if "already exists" in str(e).lower():
+        print("Composite vector index already exists, proceeding...")
+    else:
+        print(f"Error creating Composite vector index: {str(e)}")
+
+# =============================================================================
+# Performance Test: With Composite Index
+# =============================================================================
+print("\nTest 3: Composite Index Performance")
+composite_time = test_vector_search_performance(vector_store, test_query, "Composite")
 
 # =============================================================================
 # Performance Summary
@@ -288,16 +323,26 @@ print("\n" + "=" * 60)
 print("PERFORMANCE SUMMARY")
 print("=" * 60)
 
-if baseline_time and hyperscale_time:
-    speedup = baseline_time / hyperscale_time if hyperscale_time > 0 else float('inf')
-    time_saved = baseline_time - hyperscale_time
-    percent_improvement = (time_saved / baseline_time) * 100 if baseline_time > 0 else 0
+print(f"Baseline Search Time:     {baseline_time:.4f} seconds")
 
-    print(f"Baseline Search Time:     {baseline_time:.4f} seconds")
-    print(f"Hyperscale Search Time:   {hyperscale_time:.4f} seconds")
-    print(f"Speedup:                  {speedup:.2f}x faster")
-    print(f"Improvement:              {percent_improvement:.1f}%")
-else:
+if baseline_time and bhive_time:
+    speedup = baseline_time / bhive_time if bhive_time > 0 else float('inf')
+    percent_improvement = ((baseline_time - bhive_time) / baseline_time) * 100 if baseline_time > 0 else 0
+    print(f"BHIVE Search Time:        {bhive_time:.4f} seconds ({speedup:.2f}x faster, {percent_improvement:.1f}% improvement)")
+
+if baseline_time and composite_time:
+    speedup = baseline_time / composite_time if composite_time > 0 else float('inf')
+    percent_improvement = ((baseline_time - composite_time) / baseline_time) * 100 if baseline_time > 0 else 0
+    print(f"Composite Search Time:    {composite_time:.4f} seconds ({speedup:.2f}x faster, {percent_improvement:.1f}% improvement)")
+
+if bhive_time and composite_time:
+    print("\n" + "-" * 60)
+    print("Index Comparison:")
+    print("-" * 60)
+    print("- BHIVE (Hyperscale): Best for pure vector searches, scales to billions of vectors")
+    print("- Composite: Best for filtered searches combining vector + scalar filters")
+
+if not (baseline_time and bhive_time and composite_time):
     print("Could not complete performance comparison.")
 
 # =============================================================================
