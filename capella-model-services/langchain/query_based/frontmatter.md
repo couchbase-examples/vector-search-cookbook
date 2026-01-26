@@ -4,7 +4,7 @@ path: "/tutorial-capella-model-services-langchain-rag-with-hyperscale-or-composi
 title: RAG with Capella Model Services, LangChain and Couchbase Hyperscale & Composite Vector Indexes
 short_title: RAG with Capella Model Services, LangChain and Hyperscale/Composite Vector Index
 description:
-  - Learn how to build a semantic search engine using models from Capella Model Services and Couchbase Hyperscale Vector Index.
+  - Learn how to build a semantic search engine using Capella Model Services and Couchbase Hyperscale or Composite Vector Indexes.
   - You will understand how to perform Retrieval-Augmented Generation (RAG) using LangChain and Capella Model Services with Query Service.
 content_type: tutorial
 filter: sdk
