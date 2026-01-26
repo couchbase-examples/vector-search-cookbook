@@ -172,7 +172,3 @@ cython_debug/
 .qodo
 
 .DS_Store
-
-# MCP Servers
-.mcp.json*
-.serena/
