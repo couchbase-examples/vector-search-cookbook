@@ -13,8 +13,8 @@ filter: sdk
 technology:
   - vector search
 tags:
-  -Hyperscale Vector Index
-  -Composite Vector Index
+  - Hyperscale Vector Index
+  - Composite Vector Index
   - Artificial Intelligence
   - Mistral AI
   - GSI
