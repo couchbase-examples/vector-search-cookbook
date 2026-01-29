@@ -2,7 +2,7 @@
 # frontmatter
 path: "/tutorial-openai-llamaindex-rag-with-hyperscale-or-composite-vector-index"
 title: "RAG with OpenAI, LlamaIndex and Couchbase Hyperscale and Composite Vector Index"
-short_title: "RAG with OpenAI, LlamaIndex and Couchbase Hyperscale and Composite Vector Index"
+short_title: "LlamaIndex RAG with Query Vector Index"
 description:
   - Learn how to build a semantic search engine using Couchbase's Hyperscale and Composite Vector Index.
   - This tutorial demonstrates how to integrate Couchbase's Hyperscale and Composite Vector Index search capabilities with OpenAI embeddings.
