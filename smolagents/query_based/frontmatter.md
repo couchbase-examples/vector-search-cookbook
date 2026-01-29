@@ -2,7 +2,7 @@
 # frontmatter
 path: "/tutorial-smolagents-couchbase-rag-with-hyperscale-or-composite-vector-index"
 title: Retrieval-Augmented Generation (RAG) with Couchbase and smolagents using Hyperscale and Composite Vector Index
-short_title: RAG with Couchbase and smolagents using Hyperscale and Composite Vector Index
+short_title: SmolAgents RAG with Query Vector Index
 description:
   - Learn how to build a semantic search engine using Couchbase and Hugging Face smolagents using Hyperscale and Composite Vector Index.
   - This tutorial demonstrates how to integrate Couchbase's vector search capabilities with smolagents using Hyperscale and Composite Vector Index.
