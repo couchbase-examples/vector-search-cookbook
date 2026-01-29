@@ -17,7 +17,6 @@ tags:
   - Composite Vector Index
   - Artificial Intelligence
   - Mistral AI
-  - GSI
 sdk_language:
   - python
 length: 30 Mins
