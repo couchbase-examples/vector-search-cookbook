@@ -2,7 +2,7 @@
 # frontmatter
 path: "/tutorial-aws-bedrock-couchbase-rag-with-hyperscale-or-composite-vector-index"
 title: Retrieval-Augmented Generation (RAG) with Couchbase and Amazon Bedrock using Hyperscale and Composite Vector Index
-short_title: RAG with Couchbase and Amazon Bedrock using Hyperscale and Composite Vector Index
+short_title: Amazon Bedrock RAG with Query Vector Index
 description:
   - Learn how to build a semantic search engine using Couchbase and Amazon Bedrock using Hyperscale and Composite Vector Index.
   - This tutorial demonstrates how to integrate Couchbase's vector search capabilities with Amazon Bedrock's Titan embeddings and Claude language model.
