@@ -1,7 +1,7 @@
 ---
 # frontmatter
 path: "/tutorial-openrouter-deepseek-with-hyperscale-or-composite-vector-index"
-title: Retrieval-Augmented Generation with Couchbase and OpenRouter Deepseek using Hyperscale and Composite Vector Index
+title: RAG with DeepSeek using Couchbase Hyperscale and Composite Vector Index
 short_title: OpenRouter DeepSeek RAG with Query Vector Index
 description:
   - Learn how to build a semantic search engine using Couchbase and OpenRouter with Deepseek using Hyperscale and Composite Vector Index.
