@@ -1,7 +1,7 @@
 ---
 # frontmatter
 path: "/tutorial-openai-anthropic-couchbase-rag-with-hyperscale-or-composite-vector-index"
-title: Retrieval-Augmented Generation (RAG) with Couchbase, OpenAI, and Anthropic using Hyperscale and Composite Vector Index
+title: RAG with Claude using Couchbase Hyperscale and Composite Vector Index
 short_title: Claude AI RAG with Query Vector Index
 description:
   - Learn how to build a semantic search engine using Couchbase, OpenAI embeddings, and Anthropic using Hyperscale and Composite Vector Index.
