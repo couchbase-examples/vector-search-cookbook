@@ -1,7 +1,7 @@
 ---
 # frontmatter
 path: "/tutorial-pydantic-ai-couchbase-rag-with-hyperscale-or-composite-vector-index"
-title: Retrieval-Augmented Generation (RAG) with Couchbase and PydanticAI using Hyperscale and Composite Vector Index
+title: PydanticAI RAG with Couchbase Hyperscale and Composite Vector Index
 short_title: PydanticAI RAG with Query Vector Index
 description:
   - Learn how to build a semantic search engine using Couchbase and PydanticAI using Hyperscale and Composite Vector Index.
