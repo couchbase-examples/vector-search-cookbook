@@ -1,7 +1,7 @@
 ---
 # frontmatter
 path: "/tutorial-mistralai-couchbase-vector-search-with-hyperscale-or-composite-vector-index"
-title: Using Mistral AI Embeddings with Couchbase Hyperscale and Composite Vector Index
+title: RAG with Mistral using Couchbase Hyperscale and Composite Vector Index
 short_title: Mistral AI with Couchbase Hyperscale and Composite Vector Index
 description:
   - Learn how to generate embeddings using Mistral AI and store them in Couchbase using Hyperscale and Composite Vector Index.

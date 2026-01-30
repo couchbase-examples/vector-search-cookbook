@@ -1,8 +1,8 @@
 ---
 # frontmatter
 path: "/tutorial-mistralai-couchbase-vector-search-with-search-vector-index"
-title: Using Mistral AI Embeddings with Couchbase Vector Search using Search Vector Index
-short_title: Mistral AI with Couchbase Vector Search using Search Vector Index
+title: RAG with Mistral using Couchbase Search Vector Index
+short_title: RAG with Mistral using Couchbase Search Vector Index
 description:
   - Learn how to generate embeddings using Mistral AI and store them in Couchbase using Search Vector Index.
   - This tutorial demonstrates how to use Couchbase's vector search capabilities with Mistral AI embeddings.
