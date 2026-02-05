@@ -1,6 +1,6 @@
 ---
 # frontmatter
-path: "/tutorial-smolagents-couchbase-rag-with-fts"
+path: "/tutorial-smolagents-couchbase-rag-with-search-vector-index"
 title: Retrieval-Augmented Generation (RAG) with Couchbase and smolagents
 short_title: RAG with Couchbase and smolagents
 description:
@@ -12,12 +12,11 @@ filter: sdk
 technology:
   - vector search
 tags:
-  - FTS
+  - Search Vector Index
   - Artificial Intelligence
   - LangChain
   - OpenAI
   - smolagents
-  - FTS
 sdk_language:
   - python
 length: 30 Mins
