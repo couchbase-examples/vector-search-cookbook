@@ -233,7 +233,7 @@ if 'returnControl' in event:
 ## 📚 Learn More
 
 - [AWS Bedrock Agents Documentation](https://docs.aws.amazon.com/bedrock/latest/userguide/agents.html)
-- [Couchbase Vector Search](https://docs.couchbase.com/server/current/fts/fts-introduction.html)
+- [Couchbase Vector Search](https://docs.couchbase.com/server/current/search/search.html)
 - [LangChain Couchbase Integration](https://python.langchain.com/docs/integrations/vectorstores/couchbase)
 
 ## 🤝 Contributing
