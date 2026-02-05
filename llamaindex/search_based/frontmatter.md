@@ -1,6 +1,6 @@
 ---
 # frontmatter
-path: "/tutorial-openai-llamaindex-rag-with-fts"
+path: "/tutorial-openai-llamaindex-rag-with-search-vector-index"
 title: "Retrieval-Augmented Generation (RAG) with OpenAI, LlamaIndex and Couchbase Search Vector Index"
 short_title: "RAG with OpenAI, LlamaIndex and Couchbase Search Vector Index"
 description:
@@ -15,7 +15,7 @@ tags:
   - OpenAI
   - Artificial Intelligence
   - LlamaIndex
-  - FTS
+  - Search Vector Index
 sdk_language:
   - python
 length: 60 Mins
