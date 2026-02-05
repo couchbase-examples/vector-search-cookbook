@@ -1,7 +1,7 @@
 ---
 # frontmatter
 path: "/tutorial-aws-bedrock-couchbase-rag-with-search-vector-index"
-title: RAG with Bedrock using Couchbase Search Vector Index
+title: RAG with Amazon Bedrock using Couchbase Search Vector Index
 short_title: RAG with Bedrock using Couchbase Search Vector Index
 description:
   - Learn how to build a semantic search engine using Couchbase and Amazon Bedrock using Search Vector Index.
