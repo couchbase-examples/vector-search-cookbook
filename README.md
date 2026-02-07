@@ -37,7 +37,7 @@ Semantic search goes beyond simple keyword matching by understanding the context
 Use the provided `{model}_index.json` index definition file in each model's `search_based/` directory to create a new vector search index in your Couchbase cluster.
 
 ##### For Hyperscale Vector Index, Composite Vector Index Examples:
-No additional setup required. Hyperscale Vector Index and Composite Vector Index index will be created in each model's example.
+No additional setup required. Hyperscale and Composite Vector Indexes will be created in each model's example.
 
 #### 3. Run the notebook file
 
