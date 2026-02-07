@@ -3,8 +3,8 @@
 This repository demonstrates how to build a powerful semantic search engine using Couchbase as the backend database, combined with various AI-powered embedding and language model providers such as OpenAI, Azure OpenAI, Anthropic (Claude), Cohere, Hugging Face, Jina AI, Mistral AI, and Voyage AI.
 
 Each example provides two distinct approaches:
-- **FTS (Full Text Search)**: Uses Couchbase's vector search capabilities with pre-created search indices
-- **GSI (Global Secondary Index)**: Leverages Couchbase's native SQL++ queries with vector similarity functions
+- **Search Vector Index**: Uses Couchbase's vector search capabilities with pre-created search indices
+- **Hyperscale Vector Index, Composite Vector Index**: Leverages Couchbase's native SQL++ queries with vector similarity functions
 
 Semantic search goes beyond simple keyword matching by understanding the context and meaning behind the words in a query, making it essential for applications that require intelligent information retrieval.
 
@@ -33,11 +33,11 @@ Semantic search goes beyond simple keyword matching by understanding the context
 
 ### 2. Choose Your Approach:
 
-#### For FTS (Full Text Search) Examples:
-Use the provided `{model}_index.json` index definition file in each model's `fts/` directory to create a new vector search index in your Couchbase cluster.
+#### For Search Vector Index Examples:
+Use the provided `{model}_index.json` index definition file in each model's `search_based/` directory to create a new vector search index in your Couchbase cluster.
 
-#### For GSI (Global Secondary Index) Examples:
-No additional setup required. GSI index will be created in each model's example.
+#### For Hyperscale Vector Index, Composite Vector Index Examples:
+No additional setup required. Hyperscale Vector Index and Composite Vector Index index will be created in each model's example.
 
 ### 3. Run the notebook file
 
@@ -75,9 +75,9 @@ Each notebook implements a semantic search function that performs similarity sea
 
 The system implements caching functionality using `CouchbaseCache` to improve performance for repeated queries.
 
-## Couchbase Vector Search Index (FTS Approach Only)
+## Couchbase Search Vector Index
 
-For FTS examples, you'll need to create a vector search index using the provided JSON configuration files. For more information on creating a vector search index, please follow the [instructions](https://docs.couchbase.com/cloud/vector-search/create-vector-search-index-ui.html). The following is an example for Azure OpenAI Model.
+For Search Vector Index examples, you'll need to create a vector search index using the provided JSON configuration files. For more information on creating a vector search index, please follow the [instructions](https://docs.couchbase.com/cloud/vector-search/create-vector-search-index-ui.html). The following is an example for Azure OpenAI Model.
 
 ```json
 {
