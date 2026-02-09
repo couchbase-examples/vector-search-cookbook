@@ -9,7 +9,7 @@ from preprocess import (
     HideLongPipInstallOutputPreprocessor,
 )
 
-# Paths
+# Path to the project directory
 project_dir = "../../"
 markdown_dir = "output_md/"
 base_github_url = "https://github.com/couchbase-examples/vector-search-cookbook/tree/main"
