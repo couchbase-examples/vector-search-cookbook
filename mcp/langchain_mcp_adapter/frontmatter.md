@@ -1,7 +1,7 @@
 ---
 # frontmatter
 path: "/tutorial-openai-langchain-mcp-adapter"
-title: "Building LangChain MCP Adapters with OpenAI and Couchbase"
+title: "Building LangChain MCP Adapters with OpenAI and Couchbase Vector Search"
 short_title: "LangChain MCP Adapter with OpenAI and Couchbase"
 description:
   - Learn how to build a LangChain MCP adapter that connects OpenAI models to Couchbase for vector search.
