@@ -10,12 +10,12 @@ description:
 content_type: tutorial
 filter: sdk
 technology:
-  - MCP
+  - Model Context Protocol (MCP)
 tags:
   - OpenAI
   - Artificial Intelligence
   - Agents
-  - MCP
+  - Model Context Protocol (MCP)
 sdk_language:
   - python
 length: 45 Mins
