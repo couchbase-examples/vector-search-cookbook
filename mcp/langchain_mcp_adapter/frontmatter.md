@@ -10,7 +10,6 @@ description:
 content_type: tutorial
 filter: sdk
 technology:
-  - vector search
   - MCP
 tags:
   - OpenAI
