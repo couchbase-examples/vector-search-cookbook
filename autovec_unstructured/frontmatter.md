@@ -1,10 +1,10 @@
 ---
 # frontmatter
 path: "/tutorial-couchbase-autovectorization-workflows-with-unstructured-data-and-langchain"
-title: Auto-Vectorization on Unstructured Data Stored in S3 Buckets Using Couchbase Capella AI Data Plane 
+title: Auto-Vectorization on Unstructured Data Stored in S3 Buckets Using Couchbase Capella AI Data Plane (formerly AI Services) 
 short_title: Auto-Vectorization on Unstructured Data Stored in S3 Buckets
 description: 
-  - Learn how to use Couchbase Capella's AI Data Plane Auto-Vectorization feature to automatically process unstructured data from S3 buckets.
+  - Learn how to use Couchbase Capella's AI Data Plane (formerly AI Services) Auto-Vectorization feature to automatically process unstructured data from S3 buckets.
   - Configure workflows to chunk and vectorize documents (PDFs, images, etc.) and import them into Capella collections.
   - Perform semantic vector search using LangChain and the generated embeddings.
 content_type: tutorial
