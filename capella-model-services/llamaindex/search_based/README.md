@@ -9,7 +9,7 @@ The `llamaindex_rag.py` script demonstrates how to:
 1. Connect to a Couchbase Capella cluster
 2. Set up a collection and vector search index
 3. Load and process the HotpotQA dataset from RAGBench
-4. Generate embeddings using Capella AI Dataplane
+4. Generate embeddings using Capella AI Data Plane
 5. Store documents and their embeddings in Couchbase
 6. Perform semantic search using vector similarity
 7. Generate responses using a large language model with retrieved context
@@ -33,7 +33,7 @@ This implementation differs from the LangChain version (`../langchain/lachain_ra
 
 - Python 3.8+
 - Couchbase Capella account with a deployed cluster
-- Capella AI Dataplane with deployed models
+- Capella AI Data Plane with deployed models
 - Required Python packages:
   ```
   datasets
