@@ -8,6 +8,7 @@ on:
     paths:
       - '**/**.ipynb'
       - '**/**.md'
+      - 'util/convert/**'
 
 jobs:
   test:
@@ -26,11 +27,17 @@ jobs:
         with:
           node-version: 24
 
+      - name: Install converter dependencies
+        working-directory: util/convert
+        run: pip install -r requirements.txt
+
+      - name: Unit test converter
+        working-directory: util/convert
+        run: python -m unittest -v
+
       - name: Convert notebooks to markdown
-        run: |
-          cd util/convert
-          pip install -r requirements.txt
-          python convert.py
+        working-directory: util/convert
+        run: python convert.py
 
       - name: Checkout couchbase-tutorials
         uses: actions/checkout@v4
