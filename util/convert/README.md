@@ -21,11 +21,12 @@ The **`convert-notebooks`** workflow automatically runs **when files are pushed 
 ![convert-screenshot.png](static/convert-screenshot.png)
 
 ### Test Convert Notebooks
-The **`test-convert-notebooks`** workflow automatically runs on **pull requests** that modify `.ipynb` or `frontmatter.md` files. It handles the following steps:
+The **`test-convert-notebooks`** workflow automatically runs on **pull requests** that modify `.ipynb` or `.md` files, or the converter itself under `util/convert/`. It handles the following steps:
 
 1. Detect changes to `.ipynb` files.
-2. Convert the modified notebooks to markdown.
-3. Run the frontmatter tests from `couchbase-examples/couchbase-tutorials` to ensure the frontmatter is valid.
+2. Run the converter unit tests (`python -m unittest -v` in `util/convert`).
+3. Convert the modified notebooks to markdown.
+4. Run the frontmatter tests from `couchbase-examples/couchbase-tutorials` to ensure the frontmatter is valid.
 
 ![test-screenshot.png](static/test-screenshot.png)
 
@@ -37,3 +38,13 @@ The **`detect-notebook-changes`** workflow automatically runs on **pull requests
 3. Add a comment to the pull request warning the user that changes will be pushed live when merged and reporting if any notebooks are missing the `frontmatter.md` file.
 
 ![comment-screenshot.png](static/comment-screenshot.png)
+
+## Running Locally
+
+`convert.py` resolves the repository root from its own location, so it can be run from any directory:
+
+```bash
+pip install -r util/convert/requirements.txt
+python util/convert/convert.py          # writes util/convert/output_md/
+(cd util/convert && python -m unittest -v)
+```
